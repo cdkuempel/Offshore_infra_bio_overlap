@@ -35,8 +35,19 @@ table(wind$wind)
 wind_sf = st_as_sf(wind, coords = c("lon", "lat"), 
                  crs = 4326)
 
+wind_sf2<-wind_sf %>% 
+  filter(wind == 1)
+
 
 ```
+
+```{r}
+plot(st_geometry(wind_sf2))
+```
+```{r}
+
+```
+
 
 # Turn sf points into raster
 
