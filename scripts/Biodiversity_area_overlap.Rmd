@@ -1,0 +1,23 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2024-07-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries
+
+
+# Look at impact of offshore infrastructure on
+
+Based ont his paper by Jose Rehbein - https://onlinelibrary.wiley.com/doi/full/10.1111/gcb.15067?casa_token=DhPAVA5dumIAAAAA%3AlYNkM_O2VXkkCJ3FYEne_GEvmaoExQvqbkTo_k7I6AZCS-qD8x_mwKDxiM_ozlQG4z68K8BVUpF7sSU_
+
+1. Protected areas - using WDPA dataset
+
+2. KBAs - requested from https://www.keybiodiversityareas.org/kba-data
+
+3. Wilderness areas - using Jones et al. marine wilderness dataset

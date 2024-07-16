@@ -1,0 +1,19 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2024-07-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries
+
+
+# Look at offshore infrastructure overlap with species
+
+Use Aquamaps dataset
+
+Asses globally and by country
