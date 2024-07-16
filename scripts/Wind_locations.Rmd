@@ -1,0 +1,40 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2024-07-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+```
+
+
+```{r}
+dat<-read_csv(here("raw_data/offshore_infrastructure_v20231106.csv"))
+
+wind<-dat %>% 
+  filter(label %in% c("possible_wind", "probable_wind", "wind"))
+```
+
+```{r}
+table(wind$label)
+```
+
+```{r}
+wind_latlon<-wind %>% 
+  select(lat, lon)
+```
+
+# Turn CSV into raster
+
+```{r}
+wind_ras<-rasterize(x = wind_latlon, y = )
+```
+
