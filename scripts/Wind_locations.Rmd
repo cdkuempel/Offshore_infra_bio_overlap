@@ -40,6 +40,30 @@ wind_sf = st_as_sf(wind, coords = c("lon", "lat"),
 
 # Turn sf points into raster
 
+Trying to guess the resolution here - but guesses it is 0 so doesn't work
+```{r}
+# Convert sf object to spatstat ppp object to calculate nearest neighbor distance
+points_ppp <- as.ppp(st_coordinates(wind_sf), W = as.owin(st_bbox(wind_sf)))
+
+# Calculate the average nearest neighbor distance
+mean_nnd <- mean(nndist(points_ppp))
+
+# Define the extent of the raster
+extent <- ext(st_bbox(wind_sf))
+
+# Create an empty raster with the calculated resolution
+r <- rast(extent, res = mean_nnd)
+
+# Rasterize the points using the value field
+rasterized <- rasterize(points_sf, r, field = "value")
+
+# Plot the raster to check the result
+plot(rasterized)
+```
+
+
+Other tries at making raster, but doesn't work
+Says cells aren't regular
 ```{r}
 
 r <- wind_sf|>
@@ -56,7 +80,6 @@ wind2<-wind %>%
          z = wind) %>% 
   as.data.frame(.)
 
-wind_ras<-rast(wind2, crs = "EPGS:4326", type="xyz", digits = 2)
-wind_ras<-rasterfromXYZ(wind_latlon)
+wind_ras<-rast(wind2, crs = "EPGS:4326", type="xyz")
 ```
 
