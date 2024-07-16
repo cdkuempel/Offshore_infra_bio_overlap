@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(terra)
 library(here)
 library(tidyverse)
+library(sf)
 ```
 
 
@@ -20,21 +21,42 @@ library(tidyverse)
 dat<-read_csv(here("raw_data/offshore_infrastructure_v20231106.csv"))
 
 wind<-dat %>% 
-  filter(label %in% c("possible_wind", "probable_wind", "wind"))
+  mutate(wind = ifelse(label %in% c("possible_wind", "probable_wind", "wind"), 1, 0)) %>% 
+  select(lat, lon, wind)
 ```
 
 ```{r}
-table(wind$label)
+table(dat$label)
+table(wind$wind)
 ```
 
+# This plots points, which may be good enough but should be easy to convert to raster
 ```{r}
-wind_latlon<-wind %>% 
-  select(lat, lon)
+wind_sf = st_as_sf(wind, coords = c("lon", "lat"), 
+                 crs = 4326)
+
+
 ```
 
-# Turn CSV into raster
+# Turn sf points into raster
 
 ```{r}
-wind_ras<-rasterize(x = wind_latlon, y = )
+
+r <- wind_sf|>
+  terra::vect() |>
+  terra::rast()
+
+terra::values(r) <- wind_sf$wind
+terra::plot(r)
+
+wind2<-wind %>% 
+  select(lon, lat, wind) %>% 
+  rename(x = lon,
+         y = lat,
+         z = wind) %>% 
+  as.data.frame(.)
+
+wind_ras<-rast(wind2, crs = "EPGS:4326", type="xyz", digits = 2)
+wind_ras<-rasterfromXYZ(wind_latlon)
 ```
 
