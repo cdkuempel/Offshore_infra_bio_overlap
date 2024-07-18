@@ -1,0 +1,71 @@
+---
+title: "Figures"
+author: "Caitie"
+date: "2024-07-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tmap)
+```
+
+# World
+
+```{r}
+data("World")
+
+world_proj<-World %>% 
+  st_transform(., "ESRI:54017")
+```
+
+# EEZ
+
+```{r}
+eez<-st_read(here("output_data/EEZ/EEZ_diss.shp")) %>% 
+  st_make_valid(.)
+```
+# Marine wilderness
+
+```{r}
+wilderness<-rast(here("raw_data/marine_wilderness/global_wild.tif"))
+```
+
+```{r}
+wild_agg<-terra::aggregate(wilderness, fact = 4, "sum") 
+```
+
+
+# Marine wilderness results
+```{r}
+wild_infra<-st_read(here("output_data/marine_wilderness/Wilderness_infrastructure_overlap.shp")) %>% 
+   mutate(label_ID = ifelse(label == "oil", 1,
+                           ifelse(label == "possible_oil", 2,
+                                  ifelse(label == "probable_oil", 3,
+                                         ifelse(label == "wind", 4,
+                                                ifelse(label == "possible_wind", 5,
+                                                     ifelse(label == "probable_wind", 6,
+                                                            ifelse(label == "unknown", 7, 0)))))))) %>% 
+  arrange(label_ID)
+  
+```
+
+
+```{r}
+tm_shape(world_proj) +
+    tm_polygons(col = "#999999") +
+tm_shape(eez) +
+  tm_polygons(col = "grey77") +
+tm_shape(wild_agg) +
+  tm_raster(palette = "skyblue") +
+tm_shape(wild_infra) +
+  tm_dots(size = 0.2, col = "#D55E00") +
+  #tm_facets(by = "label", free.coords = F) #+
+  tm_facets(by ="label", free.coords = F)
+  #tm_layout(show.legend = FALSE)
+```
+
