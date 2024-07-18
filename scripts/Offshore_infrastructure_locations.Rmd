@@ -1,0 +1,80 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2024-07-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+```
+
+# Load Offshore infrastructure data
+
+Data is from this paper: https://www.nature.com/articles/s41586-023-06825-8
+
+
+```{r}
+dat<-read_csv(here("raw_data/offshore_infrastructure/offshore_infrastructure_v20231106.csv"))
+
+offshore_infra<-dat %>% 
+  filter(!label == "lake_maracaibo") %>%
+  select(lat, lon, label)
+```
+
+```{r}
+table(dat$label)
+```
+
+# This plots points, which may be good enough but should be easy to convert to raster
+```{r}
+infra_sf = st_as_sf(offshore_infra, coords = c("lon", "lat"), 
+                 crs = 4326) %>% 
+  st_transform(., "EPSG:4326")
+
+
+
+infra_sf<-infra_sf %>% 
+  mutate(label_ID = ifelse(label == "oil", 1,
+                           ifelse(label == "possible_oil", 2,
+                                  ifelse(label == "probable_oil", 3,
+                                         ifelse(label == "wind", 4,
+                                                ifelse(label == "possible_wind", 5,
+                                                     ifelse(label == "probable_wind", 6,
+                                                            ifelse(label == "unknown", 7, 0))))))))
+
+infra_df<-infra_sf %>% 
+  as.data.frame(.) %>% 
+  select(-geometry) %>% 
+  distinct(.) %>% 
+  arrange(label_ID)
+
+write.csv(infra_df, here("output_data/offshore_infrastructure/Offshore_infrastructure_key.csv"))
+
+
+```
+
+```{r}
+infra_sf_proj<-sf::st_transform(infra_sf, crs = "ESRI:54017")
+```
+
+
+```{r}
+#plot(st_geometry(infra_sf_proj))
+```
+
+```{r}
+st_write(infra_sf_proj, here("output_data/offshore_infrastructure/Infrastructure_locations.shp"), append = FALSE)
+```
+
+
+
+
+
