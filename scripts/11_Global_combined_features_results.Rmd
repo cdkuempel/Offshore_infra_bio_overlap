@@ -1,0 +1,216 @@
+---
+title: "Global_results"
+author: "Caitie"
+date: "2025-12-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(sf)
+library(terra)
+```
+
+# EBSA
+
+```{r}
+ebsa<-st_read(here("raw_data/EBSA/Ecologically_or_Biologically_Significant_Marine_Areas_(EBSAs).shp"))%>% 
+    st_transform(., crs = "ESRI:54017")
+```
+
+```{r}
+ebsa_diss<-ebsa%>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) 
+```
+
+# KBA
+
+```{r}
+kba<-st_read(here("raw_data/KBA/KBAsGlobal_2024_June_02_project/KBAsGlobal_2024_June_02_POL.shp")) %>% 
+    st_transform(., crs = "ESRI:54017")
+```
+
+```{r}
+kba_diss<-kba %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) 
+
+#kba_area_km2<-as.numeric(st_area(kba_diss)*1e-6)
+```
+
+# MPA
+
+```{r}
+mpa<-st_read(here("raw_data/WDPA/Subset_WDPA_Sept2025.shp")) %>% 
+    st_transform(., crs = "ESRI:54017")
+
+mpa<-mpa %>% 
+  rename(diss = id)
+```
+
+# Wilderness
+
+```{r}
+wild<-rast(here("raw_data/marine_wilderness/global_wild.tif"))
+wild[wild==0]<-1
+```
+
+```{r}
+wild_poly <- as.polygons(wild, dissolve = TRUE)
+wild_diss<-sf::st_as_sf(wild_poly)
+
+wild_diss<-wild_diss %>% 
+  rename(diss = global_wild)
+```
+
+# Collate important biodiversity features - calculate area
+
+```{r}
+all<-rbind(ebsa_diss,kba_diss, mpa, wild_diss)
+
+all_diss<-all %>% 
+  group_by(diss) %>% 
+  summarise(.)
+
+all_diss<-all_diss %>% 
+  mutate(bio_km2 = as.numeric(st_area(.)*1e-6))
+```
+
+```{r}
+st_write(all_diss, here("output_data/Paolo_results/Combined_bio_features.shp"))
+```
+
+
+# Intersect with EEZ
+
+Only consider important biodiversity features within EEZ (just not by EEZ)
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+
+eez_diss<-eez %>% 
+  mutate(diss = 1) %>% 
+  summarise(.)
+```
+
+
+```{r}
+bio_eez<-st_intersection(all_diss, eez_diss) %>% 
+  mutate(bio_eez_km2 = as.numeric(st_area(.)*1e-6))
+```
+
+```{r}
+st_write(bio_eez, here("output_data/Paolo_results/Combined_bio_features_within_eez.shp"))
+```
+
+```{r}
+all_diss<-st_read(here("output_data/Paolo_results/Combined_bio_features.shp"))
+```
+
+
+```{r}
+bio_iso3<-st_intersection(all_diss, eez) %>% 
+  mutate(bio_iso3_km2 = as.numeric(st_area(.)*1e-6))
+```
+```{r}
+st_write(bio_iso3, here("output_data/Paolo_results/Combined_bio_features_by_iso3.shp"))
+```
+
+# Intersect with wind
+
+```{r}
+buff1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
+  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
+buff15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
+  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
+buff25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
+  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
+```
+
+```{r}
+bio_eez_wind1<-st_intersection(bio_eez, buff1) %>% 
+  mutate(bio_eez_wind_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1)
+bio_eez_wind15<-st_intersection(bio_eez, buff15) %>% 
+    mutate(bio_eez_wind_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15)
+bio_eez_wind25<-st_intersection(bio_eez, buff25) %>% 
+    mutate(bio_eez_wind_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25)
+```
+
+```{r}
+bio_iso3_wind1<-st_intersection(bio_iso3, buff1) %>% 
+  mutate(bio_iso3_wind_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1)
+bio_iso3_wind15<-st_intersection(bio_iso3, buff15) %>% 
+    mutate(bio_iso3_wind_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15)
+bio_iso3_wind25<-st_intersection(bio_iso3, buff25) %>% 
+    mutate(bio_iso3_wind_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25)
+```
+
+```{r}
+all_bio<-rbind(bio_eez_wind1, bio_eez_wind15, bio_eez_wind25) %>% 
+  mutate(prop_int = bio_eez_wind_km2/bio_eez_km2,
+         prop_int_wind = bio_eez_wind_km2/wind_km2) %>% 
+  as.data.frame() %>% 
+  select(-geometry, -diss.1, -diss)
+
+all_bio_iso3<-rbind(bio_iso3_wind1, bio_iso3_wind15, bio_iso3_wind25) %>% 
+  mutate(prop_int = bio_iso3_wind_km2/bio_iso3_km2,
+         prop_int_wind = bio_iso3_wind_km2/wind_km2) %>% 
+  select(rgn_key, area_km2, bio_iso3_km2, wind_km2, bio_iso3_wind_km2, buff, wind_km2, prop_int, prop_int_wind) %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(all_bio, here("output_data/Paolo_results/Global_combined_bio_features.csv"))
+```
+
+```{r}
+write.csv(all_bio_iso3, here("output_data/Paolo_results/Global_combined_bio_features_iso3.csv"))
+```
+
+
+# Count
+
+```{r}
+wind_points<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
+```
+
+
+```{r}
+bio_iso3<-st_read(here("output_data/Paolo_results/Combined_bio_features_by_iso3.shp"))
+```
+
+```{r}
+global_num_wind_iso3<-st_intersection(bio_iso3, wind_points)
+
+global_bio_wind_iso3_count<-global_num_wind_iso3 %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "All") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(global_bio_wind_iso3_count, here("output_data/Paolo_results/Global_combined_bio_features_iso3_count.csv"))
+```
+
+

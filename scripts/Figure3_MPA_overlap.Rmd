@@ -1,0 +1,323 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(ggplot2)
+library(tmap)
+library(maps)
+library(rnaturalearth)
+library(countrycode)
+library(patchwork)
+```
+
+# Data
+
+```{r}
+iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv"))
+global_results<-read_csv(here("output_data/Paolo_results/Collated/Global_all_results.csv"))
+```
+
+```{r}
+siting_dat<-iso3_results %>% 
+  select(rgn_key, type, int_km2, feature_km2, prop_int, buff)
+
+siting_global_dat<-global_results %>% 
+  select(bio_eez_km2, bio_eez_wind_km2, prop_int, buff, type) %>% 
+  mutate(type = ifelse(type == "Non strict MPA", "Non-strict MPA", type)) %>% 
+  rename(prop_int = prop_int,
+         feature_km2 = bio_eez_km2,
+         int_km2 = bio_eez_wind_km2) %>% 
+  mutate(rgn_key = "World")
+
+all_siting<-rbind(siting_global_dat, siting_dat) %>% 
+  mutate(name = countrycode(sourcevar = rgn_key, origin = "iso3c", destination = "country.name.en")) %>% 
+  mutate(name = ifelse(is.na(name) == T, "World", name),
+         buff2 = as.character(buff))
+```
+
+```{r}
+mpa<-all_siting %>% 
+  filter(type %in% c("MPA")) %>% 
+  select(-type) %>% 
+  rename(mpa_prop_int = prop_int,
+         mpa_int_km2 = int_km2,
+         mpa_km2 = feature_km2)
+
+strict_mpa<-all_siting %>% 
+  filter(type %in% c("Strict MPA")) %>% 
+  select(-type) %>% 
+  rename(strict_prop_int = prop_int,
+         strict_int_km2 = int_km2,
+         strict_km2 = feature_km2)
+
+join<-left_join(mpa, strict_mpa, by = c("rgn_key", "name", "buff", "buff2")) %>% 
+  filter(buff == 15) %>% 
+  mutate(mpa_int_adj_km2 = mpa_int_km2-strict_int_km2,
+         mpa_int_adj_prop = mpa_int_adj_km2/mpa_km2,
+         strict_prop_int = strict_int_km2/mpa_km2) %>% 
+  select(rgn_key, name, buff2, strict_int_km2, mpa_int_adj_km2, mpa_int_adj_prop, strict_prop_int)
+```
+
+```{r}
+non_strict_area<-read_csv(here("output_data/Paolo_results/Non_strict_MPA_wind_area.csv"))
+non_strict_count<-read_csv(here("output_data/Paolo_results/Non_strict_MPA_wind_count.csv"))
+#There are actually no physical turbines within non-strict MPAs, any overlap is due to buffer size.
+```
+
+```{r}
+dat<-join %>% pivot_longer(
+    cols = c(strict_int_km2, strict_prop_int,
+             mpa_int_adj_km2, mpa_int_adj_prop),
+    names_to = c("protection", "metric"),
+    names_pattern = "(strict|mpa)_(.*)",
+    values_to = "value"
+  ) %>%
+  mutate(
+    protection = recode(protection,
+                        strict = "Strict",
+                        mpa = "Other"),
+    metric = recode(metric,
+                    int_km2 = "km2",
+                    prop_adj_int = "Proportion overlap")
+  ) %>% 
+  mutate(metric2 = ifelse(metric %in% c("km2", "int_adj_km2"), "km2", "prop_int")) %>% 
+  select(-metric)
+```
+
+
+# When a wind farm is within an MPA is it mostly strict MPAs?
+
+```{r}
+prop<-dat %>% 
+  filter(metric2 == "prop_int")
+
+ggplot(prop,
+       aes(x = factor(name, levels = rev(sort(unique(name)))),
+           y = value * 100,
+           fill = protection)) +
+  geom_col(position = "stack", width = 0.8) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c(
+      "Strict"     = "darkblue",
+      "Other" = "lightblue"
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent offshore wind overlap with MPAs (15 km buffer)",
+    fill = "Protection level"
+  ) +
+  theme_bw()
+```
+
+```{r}
+ggsave(here("figures/Fig3_MPA_Strict_barchart.png"))
+```
+
+# Supp figures of 1 and 25 km buffers
+
+```{r}
+join1<-left_join(mpa, strict_mpa, by = c("rgn_key", "name", "buff", "buff2")) %>% 
+  filter(buff == 1) %>% 
+  mutate(mpa_int_adj_km2 = mpa_int_km2-strict_int_km2,
+         mpa_int_adj_prop = mpa_int_adj_km2/mpa_km2,
+         strict_prop_int = strict_int_km2/mpa_km2) %>% 
+  select(rgn_key, name, buff2, strict_int_km2, mpa_int_adj_km2, mpa_int_adj_prop, strict_prop_int)
+```
+
+
+```{r}
+dat1<-join1 %>% pivot_longer(
+    cols = c(strict_int_km2, strict_prop_int,
+             mpa_int_adj_km2, mpa_int_adj_prop),
+    names_to = c("protection", "metric"),
+    names_pattern = "(strict|mpa)_(.*)",
+    values_to = "value"
+  ) %>%
+  mutate(
+    protection = recode(protection,
+                        strict = "Strict",
+                        mpa = "Other"),
+    metric = recode(metric,
+                    int_km2 = "km2",
+                    prop_adj_int = "Proportion overlap")
+  ) %>% 
+  mutate(metric2 = ifelse(metric %in% c("km2", "int_adj_km2"), "km2", "prop_int")) %>% 
+  select(-metric)
+```
+
+
+# When a wind farm is within an MPA is it mostly strict MPAs?
+
+```{r}
+prop1<-dat1 %>% 
+  filter(metric2 == "prop_int",
+         !is.na(value) == T)
+
+buff_1km_plot<-ggplot(prop1,
+       aes(x = factor(name, levels = rev(sort(unique(name)))),
+           y = value * 100,
+           fill = protection)) +
+  geom_col(position = "stack", width = 0.8) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c(
+      "Strict"     = "darkblue",
+      "Other" = "lightblue"
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent offshore wind overlap with MPAs (1 km buffer)",
+    fill = "Protection level"
+  ) +
+  theme_bw() + 
+  theme(legend.position="none")
+
+buff_1km_plot
+```
+
+
+```{r}
+join25<-left_join(mpa, strict_mpa, by = c("rgn_key", "name", "buff", "buff2")) %>% 
+  filter(buff == 25) %>% 
+  mutate(mpa_int_adj_km2 = mpa_int_km2-strict_int_km2,
+         mpa_int_adj_prop = mpa_int_adj_km2/mpa_km2,
+         strict_prop_int = strict_int_km2/mpa_km2) %>% 
+  select(rgn_key, name, buff2, strict_int_km2, mpa_int_adj_km2, mpa_int_adj_prop, strict_prop_int)
+```
+
+
+```{r}
+dat25<-join25 %>% pivot_longer(
+    cols = c(strict_int_km2, strict_prop_int,
+             mpa_int_adj_km2, mpa_int_adj_prop),
+    names_to = c("protection", "metric"),
+    names_pattern = "(strict|mpa)_(.*)",
+    values_to = "value"
+  ) %>%
+  mutate(
+    protection = recode(protection,
+                        strict = "Strict",
+                        mpa = "Other"),
+    metric = recode(metric,
+                    int_km2 = "km2",
+                    prop_adj_int = "Proportion overlap")
+  ) %>% 
+  mutate(metric2 = ifelse(metric %in% c("km2", "int_adj_km2"), "km2", "prop_int")) %>% 
+  select(-metric)
+```
+
+
+# When a wind farm is within an MPA is it mostly strict MPAs?
+
+```{r}
+prop25<-dat25 %>% 
+  filter(metric2 == "prop_int",
+         !is.na(value) == T)
+
+buff_25km_plot<-ggplot(prop25,
+       aes(x = factor(name, levels = rev(sort(unique(name)))),
+           y = value * 100,
+           fill = protection)) +
+  geom_col(position = "stack", width = 0.8) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c(
+      "Strict"     = "darkblue",
+      "Other" = "lightblue"
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent offshore wind overlap with MPAs (25 km buffer)",
+    fill = "Protection level"
+  ) +
+  theme_bw() +
+  theme(legend.position="none")
+
+buff_25km_plot
+```
+# Join together
+
+```{r}
+buff_1km_plot/buff_25km_plot + plot_annotation(tag_levels = 'A')
+```
+
+```{r}
+ggsave(here("figures/Supp_MPA_overlap_buffers.png"), width = 7, height = 10)
+```
+
+
+# Test another plot
+
+
+
+```{r}
+siting_dat2<-iso3_results %>% 
+  select(rgn_key, type,total_wind, overlap_wind, prop_count) %>% 
+  distinct(.) %>% 
+  filter(type %in% c("MPA", "Strict MPA"))
+
+siting_global_dat2<-global_results %>% 
+  select(type, total_count, overlap_wind) %>% 
+  mutate(type = ifelse(type == "Non strict MPA", "Non-strict MPA", type)) %>% 
+  rename(total_wind = total_count) %>% 
+  mutate(rgn_key = "World",
+         prop_count = overlap_wind/total_wind) %>% 
+  distinct(.) %>% 
+  filter(type %in% c("MPA", "Strict MPA")) 
+
+all_siting2<-rbind(siting_global_dat2, siting_dat2) %>% 
+  mutate(name = countrycode(sourcevar = rgn_key, origin = "iso3c", destination = "country.name.en")) %>% 
+  mutate(name = ifelse(is.na(name) == T, "World", name))
+```
+
+```{r}
+wide_mpa <- all_siting2 %>%
+  select(name, rgn_key, type, overlap_wind) %>%
+  pivot_wider(
+    names_from  = type,
+    values_from = overlap_wind,
+    values_fill = 0
+  ) %>% 
+  rename(Strict_MPA = 'Strict MPA') %>% 
+  mutate(strict_in_mpa = Strict_MPA/MPA) %>% 
+  filter(MPA>0) %>% 
+  mutate(name = countrycode(sourcevar = rgn_key, origin = "iso3c", destination = "country.name.en")) %>% 
+  mutate(name = ifelse(is.na(name) == T, "World", name))
+```
+
+```{r}
+long_mpa <- wide_mpa %>%
+  pivot_longer(
+    cols = c(MPA, Strict_MPA),
+    names_to = "Protection",
+    values_to = "overlap_wind"
+  )
+```
+
+```{r}
+ggplot(wide_mpa, aes(x = MPA, y = Strict_MPA, fill = strict_in_mpa)) +
+  geom_point(shape = 21, size = 3) +
+  theme_bw() +
+  geom_text_repel(aes(label = rgn_key), vjust = -0.5, size = 3) 
+```
+
+# Don't think this shows us anything different from the bar plot so will stick with that.
+
+
+

@@ -1,0 +1,130 @@
+---
+title: "Marine_wilderness"
+author: "Caitie"
+date: "2024-07-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages
+```{r}
+library(terra)
+library(sf)
+library(tidyverse)
+library(here)
+library(exactextractr)
+```
+
+
+
+
+# Marine wilderness data
+
+```{r}
+wild<-rast(here("raw_data/marine_wilderness/global_wild.tif"))
+wild[wild==0]<-1
+```
+
+```{r}
+wild_poly <- as.polygons(wild, dissolve = TRUE)
+wild_diss<-sf::st_as_sf(wild_poly)
+```
+
+
+# EEZ
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+  group_by(rgn_key) %>% 
+  summarise(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+
+#st_write(eez, here("output_data/EEZ/EEZ_diss.shp"))
+
+```
+
+```{r}
+eez_wild<-st_intersection(eez,wild_diss) %>% 
+  mutate(wild_km2 = as.numeric(st_area(.)*1e-6))
+
+eez_wild<-eez_wild %>%
+  select(rgn_key, wild_km2)
+```
+
+```{r}
+st_write(eez_wild, here("output_data/biodiversity_features/Wilderness_EEZ_intersect.shp"))
+```
+
+
+
+# Infrastructure data
+```{r}
+wind_points<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
+wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+```
+# Infrastructure intersect
+
+Number of infrastructure
+```{r}
+wild_num_wind<-st_intersection(eez_wild, wind_points)
+
+wild_wind_count<-wild_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "Wilderness") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(wild_wind_count, here("output_data/Paolo_results/Wildneress_wind_count.csv"))
+```
+
+
+Area for buffers
+
+```{r}
+wild_wind25<-st_intersection(eez_wild, wind25) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+```
+
+```{r}
+wild_wind15<-st_intersection(eez_wild, wind15) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+```
+
+```{r}
+wild_wind1<-st_intersection(eez_wild, wind1) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+```
+
+```{r}
+all_buff<-rbind(wild_wind25, wild_wind15, wild_wind1) %>% 
+  mutate(prop_int = int_km2/wild_km2,
+         type = "Wilderness") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(all_buff, here("output_data/Paolo_results/Wilderness_wind_area.csv"))
+```
+
+
+

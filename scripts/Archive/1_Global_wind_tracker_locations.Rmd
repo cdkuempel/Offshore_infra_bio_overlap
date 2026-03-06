@@ -1,0 +1,141 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2025-09-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(readxl)
+```
+
+
+# Offshore wind data
+
+data from https://globalenergymonitor.org/download-data-success/
+Downloaded on 19 September 2025
+```{r}
+wind_latlong<-read_csv(here("raw_data/Global_wind_power_tracker/Combined_GWPT.csv"))
+```
+
+```{r}
+wind_pts<- st_as_sf(wind_latlong,
+                               coords = c("Longitude", "Latitude"),
+                               crs = 4326)
+```
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+```
+
+
+Subset to offshore
+
+```{r}
+offshore<-wind_pts %>%
+  filter(`Installation Type` %in% c("Offshore mount unknown", "Offshore hard mount", "Offshore floating")) %>% 
+  st_transform(., crs = "ESRI:54017")
+```
+
+```{r}
+offshore_developed<-offshore %>%
+  filter(Status %in% c("operating", "construction")) 
+```
+
+```{r}
+offshore_developed2<- offshore_developed %>%
+  distinct(st_coordinates(.)[, "X"], st_coordinates(.)[, "Y"], .keep_all = TRUE)
+```
+
+
+
+
+
+```{r}
+st_write(wind_pts, here("output_data/offshore_wind/GWPT_offshore_wind_point_locations_all.shp"), append = FALSE)
+```
+```{r}
+st_write(offshore_developed2, here("output_data/offshore_wind/GWPT_offshore_wind_point_locations_developed.shp"), append = FALSE)
+```
+
+# Buffers
+
+25
+
+```{r}
+wind_buff25<-st_buffer(offshore_developed2, dist = 25000) 
+
+wind_buff25_developed<-wind_buff25 %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  mutate(wind_km2 = as.numeric(st_area(.))*1e-6)
+
+#wind_buff25_2_all_status<-wind_buff25 %>% 
+#  group_by(Status) %>% 
+#  summarise(.) %>% 
+#  mutate(wind_km2 = as.numeric(st_area(.))*1e-6)
+
+st_write(wind_buff25_developed, here("output_data/offshore_wind/GWPT_Wind_buffer_25km_developed.shp"), append = FALSE)
+
+#st_write(wind_buff25_2_all_status, here("output_data/offshore_wind/GWPT_Wind_buffer_25km_all_status.shp"), append = FALSE)
+```
+
+15
+
+
+```{r}
+wind_buff15<-st_buffer(offshore_developed2, dist = 15000) 
+
+wind_buff15_developed<-wind_buff15 %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  mutate(wind_km2 = as.numeric(st_area(.))*1e-6)
+
+#wind_buff15_2_all_status<-wind_buff15 %>% 
+#  group_by(Status) %>% 
+#  summarise(.) %>% 
+#  mutate(wind_km2 = as.numeric(st_area(.))*1e-6)
+
+st_write(wind_buff15_developed, here("output_data/offshore_wind/GWPT_Wind_buffer_15km_developed.shp"), append = FALSE)
+
+#st_write(wind_buff15_2_all_status, here("output_data/offshore_wind/GWPT_Wind_buffer_15km_all_status.shp"), append = FALSE)
+```
+
+1
+```{r}
+wind_buff1<-st_buffer(offshore_developed2, dist = 1000) 
+
+wind_buff1_developed<-wind_buff1 %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  mutate(wind_km2 = as.numeric(st_area(.))*1e-6)
+
+#wind_buff1_2_all_status<-wind_buff1 %>% 
+#  group_by(Status) %>% 
+#  summarise(.) %>% 
+#  mutate(wind_km2 = as.numeric(st_area(.))*1e-6)
+
+st_write(wind_buff1_developed, here("output_data/offshore_wind/GWPT_Wind_buffer_1km_developed.shp"), append = FALSE)
+
+#st_write(wind_buff1_2_all_status, here("output_data/offshore_wind/GWPT_Wind_buffer_1km_all_status.shp"), append = FALSE)
+```
+
+
+
+
+
+
+

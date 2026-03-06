@@ -1,0 +1,97 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2025-09-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#remotes::install_github("dickoa/prepr")
+library(wdpar)
+library(dplyr)
+library(ggmap)
+library(sf)
+```
+
+```{r}
+wdpa<-wdpa_fetch("global", wait = TRUE, download_dir = rappdirs::user_data_dir("wdpar"))
+```
+
+# These are the countries that overlap with 25 km buffer infrastructure
+
+Paolo
+```{r}
+#coi<-c("TWN", "USA", "FIN", "DNK", "DEU", "NLD", "POL", "FRA", "GBR", "IRL", "VNM", "CHN", "KOR", "CAN", #"SWE", "NOR", "CHL", "BEL", "RUS")
+```
+
+Global Wind Tracker
+
+```{r}
+coi2<-c("RUS","BRA","FIN","FRA","GBR","BEL","CAN","ESP","DEU","DNK","IRL","SWE","NLD","NOR","GRC","ITA","POL","PRT" ,"TWN", "TUR" ,"TON", "USA" ,"VNM" ,"CHN" ,"ARE" ,"JPN" ,"NAM" ,"NFK", "CHL", "LKA", "KOR")
+```
+
+
+```{r}
+sub_wdpa<-wdpa %>% 
+  filter(ISO3 %in% coi2,
+         MARINE %in% c(1,2),
+         STATUS %in% c("Designated", "Inscribed", "Established")) %>% 
+  st_make_valid(.)%>%
+    st_repair_geometry(.) %>% 
+    st_make_valid(.)
+         
+```
+
+```{r}
+sub_wdpa_clean<-wdpa_clean(
+  sub_wdpa,
+  crs = paste("+proj=cea +lon_0=0 +lat_ts=30 +x_0=0",
+    "+y_0=0 +datum=WGS84 +ellps=WGS84 +units=m +no_defs"),
+  exclude_unesco = TRUE,
+  snap_tolerance = 1,
+  simplify_tolerance = 0,
+  geometry_precision = 1000,
+  erase_overlaps = FALSE,
+  verbose = interactive()
+)
+```
+
+```{r}
+sub_wdpa_diss<-wdpa_dissolve(sub_wdpa_clean, geometry_precision = 1500)
+```
+
+```{r}
+st_write(sub_wdpa_diss, here("Dropbox/Collaborations/Offshore_wind_biodiversity_Aus/MPA/Subset_WDPA_Sept2025.shp"))
+```
+
+
+```{r}
+strict<-sub_wdpa_clean %>%
+  filter(IUCN_CAT %in% c("Ia", "Ib", "II", "III", "IV"))
+  
+non_strict<-sub_wdpa_clean %>%
+  filter(IUCN_CAT %in% c("V", "VI"))
+```
+
+
+```{r}
+strict_wdpa_diss<-wdpa_dissolve(strict, geometry_precision = 1500)
+```
+
+```{r}
+non_strict_wdpa_diss<-wdpa_dissolve(non_strict, geometry_precision = 1500)
+
+```
+
+
+```{r}
+st_write(strict_wdpa_diss, here("Dropbox/Collaborations/Offshore_wind_biodiversity_Aus/MPA/Subset_WDPA_Strict_Sept2025.shp"), append = TRUE)
+```
+
+```{r}
+st_write(non_strict_wdpa_diss, here("Dropbox/Collaborations/Offshore_wind_biodiversity_Aus/MPA/Subset_WDPA_Non_strict_Sept2025.shp"))
+```

@@ -1,0 +1,105 @@
+---
+title: "Maps"
+author: "Caitie"
+date: "2025-09-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(ggplot2)
+library(tmap)
+library(maps)
+library(rnaturalearth)
+library(countrycode)
+```
+
+Paolo
+
+```{r}
+paolo<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
+```
+
+
+Count
+
+```{r}
+count_df<-read_csv(here("output_data/Paolo_results/Collated/Combined_count_by_country.csv"))
+```
+
+Area
+
+```{r}
+area_df<-read_csv(here("output_data/Paolo_results/Collated/Combined_area_by_country.csv"))
+```
+
+```{r}
+mpa_df_25<-area_df %>% 
+  filter(type == "MPA",
+         buff == 25)
+```
+
+# Country
+
+```{r}
+continents<-read.csv(here("raw_data/EEZ/Countries_by_continent.csv"))
+```
+
+```{r}
+world<- ne_countries(scale = "medium", returnclass = "sf")
+
+world<-world %>% st_transform(., crs = 4326)
+
+europe<-world %>% 
+  filter(continent == "Europe",
+         iso_a3 != "RUS",
+         !iso_a3 %in% c("JEY", "GGY", "IMN", "ALA", "FRO", "MLT")) 
+
+```
+
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+  st_transform(., crs = 4326) %>% 
+  st_make_valid(.)
+```
+
+```{r}
+eez_mpa_25<-full_join(eez, mpa_df_25, by = "rgn_key") %>% 
+  st_make_valid(.)
+```
+
+```{r}
+test<-europe %>% 
+  st_transform(., crs = 3035)
+```
+
+
+```{r}
+europe_MPA<-tm_shape(world,   projection = 3035, bbox = c(690942,1074174, 6026336,  6405765 )) + #bbox = c(-25, 40, 45, 85), 
+  tm_polygons(col = "darkgray") +
+tm_shape(eez_mpa_25) +
+  tm_polygons("prop_int", colorNA = "white", title = "MPA overlap (%)",
+              breaks = c(0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4),
+              labels = c("0%", "1%", "5%", "10%", "20%", "30%", "40%")) +
+  tmap_options(check.and.fix = TRUE) +
+  tm_layout(frame = FALSE,
+            legend.outside = TRUE,
+            legend.outside.position = "left") +
+  tm_shape(paolo) +
+    tm_dots(size = 0.05, col = "black", alpha = 0.3)
+
+europe_MPA
+```
+```{r}
+tmap_save(europe_MPA, filename = here("figures/Europe_MPA_overlap.png"))
+
+```
+

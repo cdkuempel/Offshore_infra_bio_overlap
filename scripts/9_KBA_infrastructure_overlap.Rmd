@@ -1,0 +1,137 @@
+---
+title: "KBA_overlap"
+author: "Caitie"
+date: "2024-07-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages
+```{r}
+library(terra)
+library(sf)
+library(tidyverse)
+library(here)
+library(exactextractr)
+```
+
+
+# Prep KBAs
+
+```{r}
+kba<-st_read(here("raw_data/KBA/KBAsGlobal_2024_June_02_project/KBAsGlobal_2024_June_02_POL.shp")) %>% 
+    st_transform(., crs = "ESRI:54017")
+```
+
+```{r}
+kba_diss<-kba %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) 
+
+#kba_area_km2<-as.numeric(st_area(kba_diss)*1e-6)
+```
+
+# EEZ intersect
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+```
+
+```{r}
+eez_kba<-st_intersection(eez,kba_diss) %>% 
+  mutate(kba_km2 = as.numeric(st_area(.)*1e-6))
+
+eez_kba<-eez_kba %>%
+  select(rgn_key, area_km2, kba_km2)
+```
+
+```{r}
+st_write(eez_kba, here("output_data/biodiversity_features/KBA_EEZ_intersect.shp"))
+```
+
+# Infrastructure data
+```{r}
+wind_points<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
+wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+```
+
+
+# Infrastructure intersect
+
+Number of infrastructure
+```{r}
+kba_num_wind<-st_intersection(eez_kba, wind_points)
+
+kba_wind_count<-kba_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "KBA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(kba_wind_count, here("output_data/Paolo_results/KBA_wind_count.csv"))
+```
+
+
+Area for buffers
+
+```{r}
+kba_wind25<-st_intersection(eez_kba, wind25) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+```
+
+```{r}
+kba_wind15<-st_intersection(eez_kba, wind15) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+```
+
+```{r}
+kba_wind1<-st_intersection(eez_kba, wind1) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+```
+
+```{r}
+all_buff<-rbind(kba_wind25, kba_wind15, kba_wind1) %>% 
+  mutate(prop_int = int_km2/kba_km2,
+         type = "KBA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(all_buff, here("output_data/Paolo_results/KBA_wind_area.csv"))
+```
+
+```{r}
+test<-read.csv(here("output_data/results/KBA_wind_area.csv"))
+```
+
+```{r}
+eez_buff25<-st_intersection(eez, wind25)
+```
+
+
+
+
+

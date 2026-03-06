@@ -1,0 +1,59 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(here)
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+dat<-read_csv(here("raw_data/Wind_PA_national_comparison.csv")) %>% 
+  filter(!is.na(targetcapacity_gap_gw) == T) %>% 
+  mutate(Urgency = ifelse(target_deadline - 2025 <=5, "5 or less",
+                          ifelse(target_deadline-2025 >5 & target_deadline-2025 <=10, "5-10",
+                                 ">10"))) %>% 
+  mutate(Urgency = factor(Urgency, levels = c("5 or less", "5-10", ">10")),
+         Urgency = ifelse(is.na(Urgency) == T, "Unreported", as.character(Urgency))) %>% 
+  mutate(
+    Urgency = factor(
+      Urgency,
+      levels = c("5 or less", "5-10", ">10", "Unreported")
+    )
+  )
+```
+
+```{r}
+ggplot(dat, aes(y = log10(targetcapacity_gap_gw), x = percent_protection_gap, color = Urgency)) +
+  geom_point() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = log10(median(dat$targetcapacity_gap_gw)), linetype = "dashed") +
+  theme_bw() +
+  labs(y = "Energy target gap (GW, log10)",
+       x = "Marine protection gap (%)",
+       color = "Years to meet\nenergy target") +
+  scale_color_manual(
+    values = c(
+      "5 or less"  = "royalblue1",
+      "5-10" = "mediumblue",
+      ">10" = "mediumpurple",
+      "Unreported"  = "slategrey"
+    )
+  ) +
+  geom_text_repel(aes(label = country), size = 3) +
+  theme(axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))
+```
+```{r}
+ggsave(here("figures/Fig4_Energy_MPA_gap_XY_plot.png"), width = 6, height = 5)
+```
+
+

@@ -1,0 +1,76 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-02-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(ggplot2)
+library(tmap)
+library(maps)
+library(rnaturalearth)
+library(countrycode)
+```
+
+# Data
+
+```{r}
+iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv"))
+global_results<-read_csv(here("output_data/Paolo_results/Collated/Global_all_results.csv"))
+```
+
+```{r}
+siting_dat<-iso3_results %>% 
+  select(rgn_key, area_km2, prop_int, buff, iso3_wind_km2, total_wind, overlap_wind, type, prop_count, feature_km2, int_km2)
+
+
+all_siting<-siting_dat %>% 
+  mutate(name = countrycode(sourcevar = rgn_key, origin = "iso3c", destination = "country.name.en")) %>% 
+  mutate(name = ifelse(is.na(name) == T, "World", name),
+         buff2 = as.character(buff))
+
+all_siting2<-all_siting %>% 
+  filter(!rgn_key == "World")
+```
+
+# Number vs proportion
+
+```{r}
+site_sub<-all_siting2 %>% filter(buff == 1, type == "All") %>% 
+  mutate(density_wind_km2 = total_wind/area_km2)
+
+cor.test(site25$overlap_wind, site25$total_wind)
+cor.test(site25$overlap_wind, site25$density_wind_km2)
+
+cor.test(site25$prop_count, site25$total_wind)
+cor.test(site25$prop_count, site25$density_wind_km2)
+
+cor.test(site25$prop_int, site25$total_wind)
+cor.test(site25$prop_int, site25$density_wind_km2)
+```
+
+```{r}
+cor.test(site25$prop_int, site25$density_wind_km2)
+
+plot(site25$prop_int, site25$density_wind_km2)
+
+test<-site25 %>% filter(!rgn_key == "BEL")
+
+cor.test(test$prop_int, test$density_wind_km2)
+
+plot(test$prop_int, test$density_wind_km2)
+```
+
+
+
+
+# Density vs proportion

@@ -1,0 +1,130 @@
+---
+title: "Natura2000"
+author: "Caitie"
+date: "2025-09-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(sf)
+library(tidyverse)
+library(here)
+library(exactextractr)
+```
+# Natura 2000
+
+```{r}
+natura<-st_read(here("raw_data/Natura2000/Natura2000_end2021_rev1_epsg3035.shp"))  %>% 
+  st_transform(., 3035) %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  st_make_valid(.)
+
+```
+
+
+# EEZ
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., 3035) %>% 
+  st_make_valid(.)
+
+natura2<-st_make_valid(natura)
+```
+
+```{r}
+eez_natura<-st_intersection(eez,natura2) %>% 
+  mutate(natura_km2 = as.numeric(st_area(.)*1e-6))
+
+eez_natura_diss<-eez_natura %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  st_make_valid(.)
+
+eez_natura2<-st_intersection(eez, eez_natura_diss) %>% 
+  mutate(natura_km2 = as.numeric(st_area(.)*1e-6))
+
+eez_natura2<-eez_natura %>%
+  select(rgn_key, area_km2, natura_km2)
+```
+
+# Infrastructure data
+```{r}
+wind_points<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp")) %>% 
+  st_transform(., 3035)
+wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
+  rename(wind_km2 = area_km2) %>% 
+  st_transform(., 3035)
+wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
+  rename(wind_km2 = area_km2)%>% 
+  st_transform(., 3035)
+wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
+  rename(wind_km2 = area_km2)%>% 
+  st_transform(., 3035)
+```
+
+
+# Infrastructure intersect
+
+Number of infrastructure
+```{r}
+natura_num_wind<-st_intersection(eez_natura2, wind_points)
+
+natura_wind_count<-natura_num_wind %>%
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "Natura2000") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(natura_wind_count, here("output_data/Paolo_results/Natura_wind_count.csv"))
+```
+
+
+Area for buffers
+
+```{r}
+natura_wind25<-st_intersection(eez_natura2, wind25) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+```
+
+```{r}
+natura_wind15<-st_intersection(eez_natura2, wind15) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+```
+
+```{r}
+natura_wind1<-st_intersection(eez_natura2, wind1) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+```
+
+```{r}
+all_buff<-rbind(natura_wind25, natura_wind15, natura_wind1) %>% 
+  mutate(prop_int = int_km2/natura_km2,
+         type = "Natura2000") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+write.csv(all_buff, here("output_data/Paolo_results/Natura_wind_area.csv"))
+```

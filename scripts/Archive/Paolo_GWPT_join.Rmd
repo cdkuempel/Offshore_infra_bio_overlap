@@ -1,0 +1,41 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2025-09-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(dbscan)
+```
+
+```{r}
+
+paolo <- st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
+gwpt <- st_read(here("output_data/offshore_wind/GWPT_offshore_wind_point_locations_all.shp")) %>% 
+  st_transform(., crs = "ESRI:54017")
+
+```
+```{r}
+coords <- st_coordinates(paolo)
+db <- dbscan(coords, eps = 50000, minPts = 5) # cluster within ~2 km
+paolo$cluster <- db$cluster
+
+farms <- paolo %>%
+  group_by(cluster) %>%
+  summarise(geometry = st_union(geometry))
+```
+
+```{r}
+matches <- st_join(farms, gwpt, join = st_nearest_feature)
+```
+
+

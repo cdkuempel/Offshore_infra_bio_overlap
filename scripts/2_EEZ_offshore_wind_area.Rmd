@@ -1,0 +1,86 @@
+---
+title: "2_EEZ_wind_overlap"
+author: "Caitie"
+date: "2025-12-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+```
+
+# Buffer wind areas
+
+```{r}
+buff1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp"))
+buff15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp"))
+buff25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp"))
+```
+# Wind point locations
+
+```{r}
+wind_pts<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
+```
+
+# EEZ
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+```
+
+# Overlap
+
+```{r}
+eez_wind1<-st_intersection(eez,buff1) %>% 
+  mutate(iso3_wind_km2 = as.numeric(st_area(.)*1e-6)) %>% 
+  select(rgn_key, iso3_wind_km2) %>% 
+  mutate(buff = 1)
+
+eez_wind15<-st_intersection(eez,buff15) %>% 
+  mutate(iso3_wind_km2 = as.numeric(st_area(.)*1e-6)) %>% 
+  select(rgn_key, iso3_wind_km2) %>% 
+  mutate(buff = 15)
+
+eez_wind25<-st_intersection(eez,buff25) %>% 
+  mutate(iso3_wind_km2 = as.numeric(st_area(.)*1e-6))%>% 
+  select(rgn_key, iso3_wind_km2) %>% 
+  mutate(buff = 25)
+```
+
+```{r}
+eez_count<-st_intersection(eez, wind_pts)
+
+st_write(eez_count, here("output_data/Paolo_results/Wind_pt_EEZ_intersect.shp"))
+
+eez_count2<-eez_count %>% 
+ mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+
+test<-read.csv(here("output_data/Paolo_results/Country_offshore_wind_total_count.csv"))
+
+write.csv(eez_count2, here("output_data/Paolo_results/Country_offshore_wind_total_count.csv"))
+```
+
+
+# Merge all
+
+```{r}
+all_eez_wind<-rbind(eez_wind1, eez_wind15, eez_wind25) %>% 
+  as.data.frame(.) %>% 
+  select(-geometry)
+
+write.csv(all_eez_wind,here("output_data/Paolo_results/Country_offshore_wind_area.csv"))
+```
+

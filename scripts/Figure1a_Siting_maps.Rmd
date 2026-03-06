@@ -1,0 +1,575 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-01-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(ggplot2)
+library(tmap)
+library(countrycode)
+library(geodata)
+library(tmap)
+
+sf_use_s2(FALSE)
+```
+
+Countries with the most turbines
+
+1 CHN
+2 GBR
+3 Germany
+4 Denmark
+5 Netherlands
+
+# Maps
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp"))
+```
+# Wind
+
+```{r}
+wind_points<-st_read(here("output_data/Paolo_results/Wind_pt_EEZ_intersect.shp"))
+```
+
+# KBA
+
+```{r}
+kba<-st_read(here("output_data/biodiversity_features/KBA_EEZ_intersect.shp"))
+```
+# EBSA
+
+```{r}
+ebsa<-st_read(here("output_data/biodiversity_features/EBSA_EEZ_intersect.shp"))
+```
+
+
+# MPA
+
+```{r}
+mpa<-st_read(here("output_data/biodiversity_features/MPA_EEZ_intersect.shp"))
+```
+
+# Strict MPA
+
+```{r}
+strict_mpa<-st_read(here("output_data/biodiversity_features/Strict_MPA_EEZ_intersect.shp"))
+```
+
+# Wilderness
+
+```{r}
+wild<-st_read(here("output_data/biodiversity_features/Wilderness_EEZ_intersect.shp"))
+
+```
+
+
+## Germany
+
+Germany
+
+```{r}
+germany_sf <- gadm(country = "Germany", level = 1, path = tempdir())
+germany_sf <- st_as_sf(germany_sf) # Convert to sf object
+germany_sf<- st_transform(germany_sf,  "EPSG:4258")
+
+germany_eez<- eez %>% 
+  filter(rgn_name == "Germany") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.) 
+```
+
+```{r}
+kba_g<-kba %>% 
+  filter(rgn_key == "DEU") %>% 
+  st_transform(., "EPSG:4258") 
+
+ebsa_g<-ebsa %>% 
+  filter(rgn_key == "DEU") %>% 
+  st_transform(., "EPSG:4258") 
+
+# No EBSAs in germany
+
+mpa_g<-mpa %>% 
+  filter(rgn_key == "DEU") %>% 
+  st_transform(., "EPSG:4258") 
+
+strict_mpa_g<-strict_mpa %>% 
+  filter(rgn_key == "DEU") %>%
+  st_transform(., "EPSG:4258") 
+
+strict_mpa_g<-st_make_valid(strict_mpa_g)
+
+wild_g<-wild %>% 
+  filter(rgn_key == "DEU") %>% 
+  st_transform(., "EPSG:4258") 
+
+# No wilderness in Germany
+```
+
+```{r}
+wind_g<-wind_points %>% 
+  filter(rgn_key == "DEU") %>% 
+  st_transform(., "EPSG:4258") 
+```
+
+
+
+```{r}
+germany_map<-tm_shape(germany_eez) +
+    tm_borders(col = "darkgrey", lwd = 1, lty = "solid") +
+  tm_shape(germany_sf) + 
+  tm_polygons(fill = "grey29", col = "grey29", lwd = 0) +
+tm_shape(kba_g) +
+  tm_polygons(fill = "mediumpurple", col = "mediumpurple", lwd = 0, alpha = 0.5) +
+#tm_shape(ebsa_g) +
+#  tm_polygons(fill = "darkblue", col = "darkblue", lwd = 0, alpha = 0.5) +
+tm_shape(mpa_g) +
+  tm_polygons(fill = "lightblue", col = "lightblue", lwd = 0, alpha = 0.5) +
+tm_shape(strict_mpa_g) +
+  tm_polygons(fill = "lightseagreen", col = "lightseagreen", lwd = 0, alpha = 0.5) +
+#tm_shape(wild_g) +
+#  tm_polygons(fill = "darkgreen", col = "darkgreen", lwd = 0, alpha = 0.5) +
+tm_shape(wind_g) +
+  tm_dots(col = "darkorange", alpha = 0.2) +
+tm_layout(    
+    legend.position = c("right", "bottom"), # Adjust position
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    frame = FALSE,
+    bg.color = NA
+  ) +
+  tmap_options(check.and.fix = TRUE) 
+
+germany_map
+  
+```
+
+```{r}
+tmap_save(germany_map, here("figures/Germany_siting_map.png"), bg = "transparent")
+```
+
+# Poland
+Poland
+
+
+```{r}
+poland_sf <- gadm(country = "Poland", level = 1, path = tempdir())
+poland_sf <- st_as_sf(poland_sf) # Convert to sf object
+poland_sf<- st_transform(poland_sf,  "EPSG:4258")
+
+poland_eez<- eez %>% 
+  filter(rgn_name == "Poland") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.) 
+```
+
+```{r}
+kba_p<-kba %>% 
+  filter(rgn_key == "POL") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+ebsa_p<-ebsa %>% 
+  filter(rgn_key == "POL") %>% 
+  st_transform(., "EPSG:4258") 
+
+# No EBSAs in germany
+
+mpa_p<-mpa %>% 
+  filter(rgn_key == "POL") %>% 
+  st_transform(., "EPSG:4258") 
+
+strict_mpa_p<-strict_mpa %>% 
+  filter(rgn_key == "POL") %>%
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+wild_p<-wild %>% 
+  filter(rgn_key == "POL") %>% 
+  st_transform(., "EPSG:4258") 
+
+# No wilderness in Germany
+```
+
+```{r}
+wind_p<-wind_points %>% 
+  filter(rgn_key == "POL") %>% 
+  st_transform(., "EPSG:4258") 
+```
+
+
+
+```{r}
+tm_shape(poland_eez) +
+    tm_borders(col = "darkgrey", lwd = 1, lty = "solid") +
+tm_shape(poland_sf) + 
+  tm_polygons(fill = "grey29", col = "grey29", lwd = 0) +
+tm_shape(kba_p) +
+  tm_polygons(fill = "mediumpurple", col = "mediumpurple", lwd = 0, alpha = 0.5) +
+#tm_shape(ebsa_p) +
+#  tm_polygons(fill = "darkblue", col = "darkblue", lwd = 0, alpha = 0.5) +
+tm_shape(mpa_p) +
+  tm_polygons(fill = "lightblue", col = "lightblue", lwd = 0, alpha = 0.5) +
+tm_shape(strict_mpa_p) +
+  tm_polygons(fill = "lightseagreen", col = "lightseagreen", lwd = 0, alpha = 0.5) +
+#tm_shape(wild_p) +
+#  tm_polygons(fill = "darkgreen", col = "darkgreen", lwd = 0, alpha = 0.5) +
+tm_shape(wind_p) +
+  tm_dots(col = "darkorange", size = 0.2) +
+tm_layout(    
+    legend.position = c("right", "bottom"), # Adjust position
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    frame = FALSE,
+    title = "Poland", 
+    title.position = c("center", "top")
+  ) +
+  tmap_options(check.and.fix = TRUE) #+
+  #tm_scale_bar(position = c("left", "bottom")) 
+  
+```
+# Chile 
+Chile
+
+```{r}
+chile_sf <- gadm(country = "Chile", level = 1, path = tempdir())
+chile_sf <- st_as_sf(chile_sf) # Convert to sf object
+chile_sf<- st_transform(chile_sf,  "EPSG: 32719")
+
+chile_eez<- eez %>% 
+  filter(rgn_name == "Chile") %>% 
+  st_transform(., "EPSG: 32719") %>% 
+  st_make_valid(.) 
+```
+
+```{r}
+kba_ch<-kba %>% 
+  filter(rgn_key == "CHL") %>% 
+  st_transform(., "EPSG: 32719") %>% 
+  st_make_valid(.)
+
+ebsa_ch<-ebsa %>% 
+  filter(rgn_key == "CHL") %>% 
+  st_transform(., "EPSG: 32719") 
+
+
+mpa_ch<-mpa %>% 
+  filter(rgn_key == "CHL") %>% 
+  st_transform(., "EPSG: 32719") 
+
+strict_mpa_ch<-strict_mpa %>% 
+  filter(rgn_key == "CHL") %>%
+  st_transform(., "EPSG: 32719") %>% 
+  st_make_valid(.)
+
+wild_ch<-wild %>% 
+  filter(rgn_key == "CHL") %>% 
+  st_transform(., "EPSG: 32719") 
+
+# No wilderness in Germany
+```
+
+```{r}
+wind_ch<-wind_points %>% 
+  filter(rgn_key == "CHL") %>% 
+  st_transform(., "EPSG: 32719") 
+```
+
+
+
+```{r}
+tm_shape(chile_sf) + 
+  tm_polygons(fill = "grey29", col = "grey29", lwd = 0) +
+tm_shape(chile_eez) +
+    tm_borders(col = "darkgrey", lwd = 1, lty = "solid") +
+tm_shape(kba_ch) +
+  tm_polygons(fill = "mediumpurple", col = "mediumpurple", lwd = 0, alpha = 0.5) +
+tm_shape(ebsa_ch) +
+  tm_polygons(fill = "darkblue", col = "darkblue", lwd = 0, alpha = 0.5) +
+tm_shape(mpa_ch) +
+  tm_polygons(fill = "lightblue", col = "lightblue", lwd = 0, alpha = 0.5) +
+#tm_shape(strict_mpa_ch) +
+#  tm_polygons(fill = "darkorange1", col = "darkorange1", lwd = 0, alpha = 0.5) +
+tm_shape(wild_ch) +
+  tm_polygons(fill = "steelblue4", col = "steelblue4", lwd = 0, alpha = 0.5) +
+tm_shape(wind_ch) +
+  tm_dots(col = "darkorange", size = 0.2) +
+tm_layout(    
+    legend.position = c("right", "bottom"), # Adjust position
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    frame = FALSE,
+    title = "Chile", 
+    title.position = c("center", "top")
+  ) +
+  tmap_options(check.and.fix = TRUE) #+
+  #tm_scale_bar(position = c("left", "bottom")) 
+  
+```
+
+
+
+# UK
+UK
+
+```{r}
+uk_sf <- gadm(country = "United Kingdom", level = 1, path = tempdir())
+uk_sf <- st_as_sf(uk_sf) # Convert to sf object
+uk_sf<- st_transform(uk_sf,  "EPSG:4258")
+
+uk_eez<- eez %>% 
+  filter(rgn_name == "United Kingdom") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.) 
+```
+
+```{r}
+kba_uk<-kba %>% 
+  filter(rgn_key == "GBR") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+ebsa_uk<-ebsa %>% 
+  filter(rgn_key == "GBR") %>% 
+  st_transform(., "EPSG:4258") 
+
+
+mpa_uk<-mpa %>% 
+  filter(rgn_key == "GBR") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+strict_mpa_uk<-strict_mpa %>% 
+  filter(rgn_key == "GBR") %>%
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+wild_uk<-wild %>% 
+  filter(rgn_key == "GBR") %>% 
+  st_transform(., "EPSG:4258") 
+
+```
+
+```{r}
+wind_uk<-wind_points %>% 
+  filter(rgn_key == "GBR") %>% 
+  st_transform(., "EPSG:4258") 
+```
+
+
+
+```{r}
+gbr_map<-tm_shape(uk_eez) +
+    tm_borders(col = "darkgrey", lwd = 1, lty = "solid") +
+tm_shape(uk_sf) + 
+  tm_polygons(fill = "grey29", col = "grey29", lwd = 0) +
+tm_shape(kba_uk) +
+  tm_polygons(fill = "mediumpurple", col = "mediumpurple", lwd = 0, alpha = 0.5) +
+#tm_shape(ebsa_uk) +
+#  tm_polygons(fill = "darkblue", col = "darkblue", lwd = 0, alpha = 0.5) +
+tm_shape(mpa_uk) +
+  tm_polygons(fill = "lightblue", col = "lightblue", lwd = 0, alpha = 0.5) +
+tm_shape(strict_mpa_uk) +
+  tm_polygons(fill = "lightseagreen", col = "lightseagreen", lwd = 0, alpha = 0.5) +
+tm_shape(wild_uk) +
+  tm_polygons(fill = "steelblue4", col = "steelblue4", lwd = 0, alpha = 0.5) +
+tm_shape(wind_uk) +
+  tm_dots(col = "darkorange", alpha = 0.2) +
+tm_layout(    
+    legend.position = c("right", "bottom"), # Adjust position
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    frame = FALSE,
+    bg.color = NA
+  ) +
+  tmap_options(check.and.fix = TRUE) #+
+  #tm_scale_bar(position = c("left", "bottom")) 
+
+gbr_map
+```
+```{r}
+tmap_save(gbr_map, here("figures/UK_siting_map.png"), bg = "transparent")
+```
+
+# Denmark
+
+Denmark
+
+```{r}
+den_sf <- gadm(country = "Denmark", level = 1, path = tempdir())
+den_sf <- st_as_sf(den_sf) # Convert to sf object
+den_sf<- st_transform(den_sf,  "EPSG:4258")
+
+den_eez<- eez %>% 
+  filter(rgn_name == "Denmark") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.) 
+```
+
+```{r}
+kba_den<-kba %>% 
+  filter(rgn_key == "DNK") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+ebsa_den<-ebsa %>% 
+  filter(rgn_key == "DNK") %>% 
+  st_transform(., "EPSG:4258") 
+
+
+mpa_den<-mpa %>% 
+  filter(rgn_key == "DNK") %>% 
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+strict_mpa_den<-strict_mpa %>% 
+  filter(rgn_key == "DNK") %>%
+  st_transform(., "EPSG:4258") %>% 
+  st_make_valid(.)
+
+wild_den<-wild %>% 
+  filter(rgn_key == "DNK") %>% 
+  st_transform(., "EPSG:4258") 
+
+```
+
+```{r}
+wind_den<-wind_points %>% 
+  filter(rgn_key == "DNK") %>% 
+  st_transform(., "EPSG:4258") 
+```
+
+
+
+```{r}
+den_map<-tm_shape(den_eez) +
+    tm_borders(col = "darkgrey", lwd = 1, lty = "solid") +
+tm_shape(den_sf) + 
+  tm_polygons(fill = "grey29", col = "grey29", lwd = 0) +
+tm_shape(kba_den) +
+  tm_polygons(fill = "mediumpurple", col = "mediumpurple", lwd = 0, alpha = 0.5) +
+#tm_shape(ebsa_den) +
+#  tm_polygons(fill = "darkblue", col = "darkblue", lwd = 0, alpha = 0.5) +
+tm_shape(mpa_den) +
+  tm_polygons(fill = "lightblue", col = "lightblue", lwd = 0, alpha = 0.5) +
+tm_shape(strict_mpa_den) +
+  tm_polygons(fill = "lightseagreen", col = "lightseagreen", lwd = 0, alpha = 0.5) +
+#tm_shape(wild_den) +
+#  tm_polygons(fill = "darkgreen", col = "darkgreen", lwd = 0, alpha = 0.5) +
+tm_shape(wind_den) +
+  tm_dots(col = "darkorange", size = 0.1, alpha = 0.2) +
+tm_layout(    
+    legend.position = c("right", "bottom"), # Adjust position
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    frame = FALSE,
+    bg.color = NA
+  ) +
+  tmap_options(check.and.fix = TRUE) #+
+  #tm_scale_bar(position = c("left", "bottom")) 
+  
+den_map
+```
+```{r}
+tmap_save(den_map, here("figures/Denmark_siting_map.png"), bg = "transparent")
+```
+# China
+
+China
+
+```{r}
+chn_sf <- gadm(country = "China", level = 1, path = tempdir())
+chn_sf <- st_as_sf(chn_sf) # Convert to sf object
+chn_sf<- st_transform(chn_sf,  "EPSG:6933")
+
+chn_eez<- eez %>% 
+  filter(rgn_name == "China") %>% 
+  st_transform(., "EPSG:6933") %>% 
+  st_make_valid(.) 
+```
+
+```{r}
+kba_chn<-kba %>% 
+  filter(rgn_key == "CHN") %>% 
+  st_transform(., "EPSG:6933") %>% 
+  st_make_valid(.)
+
+ebsa_chn<-ebsa %>% 
+  filter(rgn_key == "CHN") %>% 
+  st_transform(., "EPSG:6933") 
+
+
+mpa_chn<-mpa %>% 
+  filter(rgn_key == "CHN") %>% 
+  st_transform(., "EPSG:6933") %>% 
+  st_make_valid(.)
+
+strict_mpa_chn<-strict_mpa %>% 
+  filter(rgn_key == "CHN") %>%
+  st_transform(., "EPSG:6933") %>% 
+  st_make_valid(.)
+
+wild_chn<-wild %>% 
+  filter(rgn_key == "CHN") %>% 
+  st_transform(., "EPSG:6933") 
+
+```
+
+```{r}
+wind_chn<-wind_points %>% 
+  filter(rgn_key == "CHN") %>% 
+  st_transform(., "EPSG:6933") 
+```
+
+
+
+```{r}
+chn_map<-tm_shape(chn_eez) +
+    tm_borders(col = "darkgrey", lwd = 1, lty = "solid") +
+tm_shape(chn_sf) + 
+  tm_polygons(fill = "grey29", col = "grey29", lwd = 0) +
+tm_shape(kba_chn) +
+  tm_polygons(fill = "mediumpurple", col = "mediumpurple", lwd = 0, alpha = 0.5) +
+#tm_shape(ebsa_chn) +
+#  tm_polygons(fill = "darkblue", col = "darkblue", lwd = 0, alpha = 0.5) +
+tm_shape(mpa_chn) +
+  tm_polygons(fill = "lightblue", col = "lightblue", lwd = 0, alpha = 0.5) +
+tm_shape(strict_mpa_chn) +
+  tm_polygons(fill = "lightseagreen", col = "lightseagreen", lwd = 0, alpha = 0.5) +
+#tm_shape(wild_chn) +
+#  tm_polygons(fill = "steelblue4", col = "steelblue4", lwd = 0, alpha = 0.5) +
+tm_shape(wind_chn) +
+  tm_dots(col = "darkorange", alpha = 0.2) +
+tm_layout(    
+    legend.position = c("right", "bottom"), # Adjust position
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    frame = FALSE,
+    bg.color = NA
+  ) +
+  tmap_options(check.and.fix = TRUE) #+
+  #tm_scale_bar(position = c("left", "bottom")) 
+  
+chn_map
+```
+```{r}
+tmap_save(chn_map, here("figures/China_siting_map.png"), bg = "transparent")
+```
+
+
+```{r}
+tmap_arrange(chn_map, germany_map, gbr_map, den_map, ncol = 2, nrow = 2)
+```
+
+

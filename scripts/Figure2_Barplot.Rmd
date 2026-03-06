@@ -1,0 +1,104 @@
+---
+title: "Figure2"
+author: "Caitie"
+date: "2026-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(ggplot2)
+library(tmap)
+library(maps)
+library(rnaturalearth)
+library(countrycode)
+```
+
+# Data
+
+```{r}
+iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv"))
+global_results<-read_csv(here("output_data/Paolo_results/Collated/Global_all_results.csv"))
+```
+
+```{r}
+siting_dat<-iso3_results %>% 
+  select(rgn_key, prop_int, buff, iso3_wind_km2, total_wind, overlap_wind, type, prop_count, feature_km2, int_km2)
+
+siting_global_dat<-global_results %>% 
+  select(buff, prop_int, bio_eez_wind_km2, total_count, overlap_wind, type, bio_eez_km2, wind_km2) %>% 
+  mutate(prop_count = overlap_wind/total_count,
+         type = ifelse(type == "Non strict MPA", "Non-strict MPA", type)) %>% 
+  rename(prop_int = prop_int,
+         iso3_wind_km2 = wind_km2,
+         int_km2 = bio_eez_wind_km2,
+         total_wind = total_count,
+         feature_km2 = bio_eez_km2) %>% 
+  mutate(rgn_key = "World")
+
+all_siting<-rbind(siting_global_dat, siting_dat) %>% 
+  mutate(name = countrycode(sourcevar = rgn_key, origin = "iso3c", destination = "country.name.en")) %>% 
+  mutate(name = ifelse(is.na(name) == T, "World", name),
+         buff2 = as.character(buff))
+```
+```{r}
+
+ggplot(all_siting, aes(fill = buff2, x = name, y = prop_int*100)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~type, scale = "free") +
+  theme_bw() +
+   scale_fill_manual(values = c("25"="darkblue", "15"="lightblue", "1"="royalblue")) +
+  labs(x = "Country",
+       y = "Percent overlap with offshore wind",
+       fill = "Buffer size") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+```{r}
+
+all_siting2<-all_siting %>% 
+  filter(!type == "All",
+         !type %in% c("Natura2000", "Other MPA", "Non-strict MPA")) %>% 
+  mutate(label = ifelse(buff2 == "25" & prop_int<=0.01, "*",
+                        ifelse(buff2 == "15" & prop_int<=0.01, "*",
+                               ifelse(buff2 == "1" & prop_int <=0.01, "*", ""))))
+
+ggplot(all_siting2, aes(fill = buff2, x = type, y = prop_int * 100)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~name, scales = "free_x") +
+  theme_bw() +
+  scale_fill_manual(values = c("25"="darkblue", "15"="lightblue", "1"="royalblue")) +
+  labs(x = "Key Biodiversity Area",
+       y = "Percent offshore wind overlap with feature",
+       fill = "Buffer size") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  geom_text(
+    aes(label = label),
+    vjust = -0.5, # Adjust vertical position slightly above the bar
+    size = 5     # Adjust the size of the asterisk
+  ) +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        strip.text = element_text(size = 10),
+       legend.position = "bottom") +
+  ylim(c(0,100))
+```
+
+```{r}
+ggsave(here("figures/Fig2_biodiversity_overlap.png"), width = 10, height = 12)
+```
+```{r}
+write.csv(all_siting2, here("output_data/Supp_table_bio_area_overlap.csv"))
+```
+
+```{r}
+
+```
+
