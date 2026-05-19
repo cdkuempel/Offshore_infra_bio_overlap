@@ -48,6 +48,11 @@ eez_mpa<-eez_mpa %>%
   select(rgn_key, area_km2, non_strict_mpa_km2)
 ```
 
+```{r}
+st_write(eez_mpa, here("output_data/biodiversity_features/Non-strict_MPA_EEZ_intersect.shp"))
+```
+
+
 
 # Infrastructure data
 ```{r}
