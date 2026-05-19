@@ -1,0 +1,458 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-05-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tidyverse)
+library(here)
+library(terra)
+library(dbscan)
+```
+# Wind turbine locations
+
+```{r}
+wind_points<-st_read(here("output_data/Paolo_results/Wind_pt_EEZ_intersect.shp"))
+```
+# Environmentally suitable areas
+
+```{r}
+env_suit<-rast(here("raw_data/Wind/wind_pd_mask.tif"))
+env_suit[env_suit>0]<- 1
+env_suit[is.na(env_suit)]<-0
+
+env_suit_proj<-project(env_suit, "ESRI:54017")
+```
+
+```{r}
+env_suit_poly<-as.polygons(env_suit_proj)
+env_suit_sf<-st_as_sf(env_suit_poly)
+```
+
+
+# EEZ
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+```
+Intersect EEZ and env suitability
+
+```{r}
+eez_env_suit<-st_intersection(eez,env_suit_sf) 
+```
+# Biodiversity layers (intersected with EEZ)
+
+```{r}
+mpa<-st_read(here("output_data/biodiversity_features/MPA_EEZ_intersect.shp"))
+
+strict_mpa<-st_read(here("output_data/biodiversity_features/Strict_MPA_EEZ_intersect.shp"))
+  
+non_strict_mpa<-st_read(here("output_data/biodiversity_features/Non-strict_MPA_EEZ_intersect.shp"))
+
+kba<-st_read(here("output_data/biodiversity_features/KBA_EEZ_intersect.shp"))
+  
+ebsa<-st_read(here("output_data/biodiversity_features/EBSA_EEZ_intersect.shp"))
+
+wild<-st_read(here("output_data/biodiversity_features/Wilderness_EEZ_intersect.shp"))
+```
+
+
+# Wind farm clusters
+```{r}
+c<-unique(wind_points$rgn_key)
+
+for(i in 1:length(c)){
+  
+  #Subset to country
+  sub<-wind_points%>% 
+    filter(rgn_key == c[[i]])
+  
+  iso3<-unique(c[[i]])
+  print(iso3)
+  
+  sub_cluster<-sub %>%
+  mutate(
+    cluster_id = dbscan(
+      st_coordinates(.),
+      eps = 5000,
+      minPts = 5
+    )$cluster
+  ) 
+  
+  # Find spatial clusters of wind farms
+  cluster_centroids <- sub_cluster %>%
+  filter(cluster_id != 0) %>%   # optional: remove noise
+  group_by(cluster_id) %>%
+  summarise() %>%               # dissolves geometries within cluster
+  st_centroid()
+
+# extract centroid coordinates
+cluster_centroids <- cluster_centroids %>%
+  mutate(
+    centroid_x = st_coordinates(.)[,1],
+    centroid_y = st_coordinates(.)[,2]
+  ) %>%
+  st_drop_geometry() %>%
+  select(cluster_id, centroid_x, centroid_y)
+
+# calculate relative turbine positions
+turbines_relative <- sub_cluster %>%
+  left_join(cluster_centroids, by = "cluster_id") %>%
+  mutate(
+    x = st_coordinates(geometry)[,1],
+    y = st_coordinates(geometry)[,2],
+    dx = x - centroid_x,
+    dy = y - centroid_y
+  )
+
+sub_env_suit<-eez_env_suit %>% 
+  filter(rgn_key == c[[i]])
+
+n_cluster<-length(unique(sub_cluster$cluster_id))
+
+#Biodiversity layer subsets
+
+sub_mpa<-mpa %>% filter(rgn_key == c[[i]])
+sub_strict<-strict_mpa  %>% filter(rgn_key == c[[i]])
+sub_non_strict<- non_strict_mpa %>% filter(rgn_key == c[[i]])
+sub_kba<- kba  %>% filter(rgn_key == c[[i]])
+sub_ebsa<- ebsa  %>% filter(rgn_key == c[[i]])
+sub_wild <- wild  %>% filter(rgn_key == c[[i]])
+
+#Storage objects
+count_results <- data.frame()
+overlap_results <- data.frame()
+
+for(k in 1:10){
+  
+  print(k)
+  rm(random_centroids)
+
+# Sample new centroids inside suitable area
+  
+random_centroids <- st_sample(sub_env_suit, size = n_cluster)
+
+# Move each observed cluster to random centroid
+  
+random_centroids_df <- st_as_sf(random_centroids) %>%
+  mutate(
+    cluster_id = unique(turbines_relative$cluster_id),
+    random_centroid_x = st_coordinates(.)[, 1],
+    random_centroid_y = st_coordinates(.)[, 2]
+  ) %>%
+  st_drop_geometry() %>%
+  select(cluster_id, random_centroid_x, random_centroid_y)
+
+random_turbines <- turbines_relative %>%
+  left_join(random_centroids_df, by = "cluster_id") %>%
+  filter(cluster_id>0) %>% 
+  mutate(
+    new_x = random_centroid_x + dx,
+    new_y = random_centroid_y + dy
+  ) %>%
+  st_drop_geometry() %>%
+  st_as_sf(
+    coords = c("new_x", "new_y"),
+    crs = st_crs(turbines_relative)
+  )
+
+# Add buffers
+
+random_buff1<-st_buffer(random_turbines, dist = 1000) 
+random_buff15<-st_buffer(random_turbines, dist = 15000) 
+random_buff25<-st_buffer(random_turbines, dist = 25000) 
+
+# Dissolve
+
+rand_buff1_diss<-random_buff1 %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  mutate(rand_wind_km2 = as.numeric(st_area(.))*1e-6)
+
+rand_buff15_diss<-random_buff15 %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  mutate(rand_wind_km2 = as.numeric(st_area(.))*1e-6)
+
+rand_buff25_diss<-random_buff25 %>% 
+  mutate(diss = 1) %>%
+  group_by(diss) %>% 
+  summarise(.) %>% 
+  mutate(rand_wind_km2 = as.numeric(st_area(.))*1e-6)
+
+
+# Recalculate overlap
+
+## MPA
+
+### Count
+
+mpa_num_wind<-st_intersection(sub_mpa, random_turbines)
+
+mpa_wind_count<-mpa_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "MPA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+
+### Overlaps
+
+mpa_wind1<-st_intersection(sub_mpa, rand_buff1_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+
+mpa_wind15<-st_intersection(sub_mpa, rand_buff15_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+
+mpa_wind25<-st_intersection(sub_mpa, rand_buff25_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+
+all_mpa_buff<-rbind(mpa_wind25, mpa_wind15, mpa_wind1) %>% 
+  mutate(prop_int = int_km2/mpa_km2,
+         type = "MPA") %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  rename(feature_km2 = mpa_km2) %>% 
+  select(rgn_key, feature_km2, rand_wind_km2, int_km2, buff, prop_int, type)
+
+## Strict MPA
+
+### Count
+
+strict_mpa_num_wind<-st_intersection(sub_strict, random_turbines)
+
+strict_mpa_wind_count<-strict_mpa_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "Strict MPA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+
+### Overlap
+
+strict_mpa_wind1<-st_intersection(sub_strict, rand_buff1_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+
+strict_mpa_wind15<-st_intersection(sub_strict, rand_buff15_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+
+strict_mpa_wind25<-st_intersection(sub_strict, rand_buff25_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+
+all_strict_buff<-rbind(strict_mpa_wind25, strict_mpa_wind15, strict_mpa_wind1) %>% 
+  mutate(prop_int = int_km2/strc__2,
+         type = "Strict MPA") %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  rename(feature_km2 = strc__2) %>% 
+  select(rgn_key, feature_km2, rand_wind_km2, int_km2, buff, prop_int, type)
+
+## Non Strict MPA
+
+### Count
+
+non_mpa_num_wind<-st_intersection(sub_non_strict, random_turbines)
+
+non_strict_mpa_wind_count<-non_mpa_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "Non-trict MPA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+
+### Overlap
+
+non_strict_mpa_wind1<-st_intersection(sub_non_strict, rand_buff1_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+
+non_strict_mpa_wind15<-st_intersection(sub_non_strict, rand_buff15_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+
+non_strict_mpa_wind25<-st_intersection(sub_non_strict, rand_buff25_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+
+all_non_strict_buff<-rbind(non_strict_mpa_wind25, non_strict_mpa_wind15, non_strict_mpa_wind1) %>% 
+  mutate(prop_int = int_km2/nn_s__2,
+         type = "Non-strict MPA") %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  rename(feature_km2 = nn_s__2) %>% 
+  select(rgn_key, feature_km2, rand_wind_km2, int_km2, buff, prop_int, type)
+
+## KBA
+
+### Count
+
+kba_num_wind<-st_intersection(sub_kba, random_turbines)
+
+kba_wind_count<-kba_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "KBA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+
+### Overlap
+
+kba_wind1<-st_intersection(sub_kba, rand_buff1_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+
+kba_wind15<-st_intersection(sub_kba, rand_buff15_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+
+kba_wind25<-st_intersection(sub_kba, rand_buff25_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+
+all_kba_buff<-rbind(kba_wind25, kba_wind15, kba_wind1) %>% 
+  mutate(prop_int = int_km2/kba_km2,
+         type = "KBA") %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  rename(feature_km2 = kba_km2) %>% 
+  select(rgn_key, feature_km2, rand_wind_km2, int_km2, buff, prop_int, type)
+
+## EBSA
+
+### Count
+
+ebsa_num_wind<-st_intersection(sub_ebsa, random_turbines)
+
+ebsa_wind_count<-ebsa_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "EBSA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+
+### Overlap
+
+ebsa_wind1<-st_intersection(sub_ebsa, rand_buff1_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+
+ebsa_wind15<-st_intersection(sub_ebsa, rand_buff15_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+
+ebsa_wind25<-st_intersection(sub_ebsa, rand_buff25_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+
+all_ebsa_buff<-rbind(ebsa_wind25, ebsa_wind15, ebsa_wind1) %>% 
+  mutate(prop_int = int_km2/ebsa_km2,
+         type = "EBSA") %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  rename(feature_km2 = ebsa_km2) %>% 
+  select(rgn_key, feature_km2, rand_wind_km2, int_km2, buff, prop_int, type)
+
+## Wilderness
+
+### Count
+
+wild_num_wind<-st_intersection(sub_wild, random_turbines)
+
+wild_wind_count<-wild_num_wind %>% 
+  distinct(geometry, .keep_all = TRUE) %>% 
+  mutate(count = 1) %>%
+  group_by(rgn_key) %>% 
+  summarise(num_wind = sum(count, na.rm = T)) %>% 
+  mutate(type = "Wilderness") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+
+### Overlap
+
+
+wild_wind1<-st_intersection(sub_wild, rand_buff1_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+
+wild_wind15<-st_intersection(sub_wild, rand_buff15_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+
+wild_wind25<-st_intersection(sub_wild, rand_buff25_diss) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+
+all_wild_buff<-rbind(wild_wind25, wild_wind15, wild_wind1) %>% 
+  mutate(prop_int = int_km2/wild_km2,
+         type = "Wilderness") %>% 
+  as.data.frame() %>% 
+  select(-geometry) %>% 
+  rename(feature_km2 = wild_km2) %>% 
+  select(rgn_key, feature_km2, rand_wind_km2, int_km2, buff, prop_int, type)
+
+
+# Combine
+
+count_all<-rbind(mpa_wind_count, strict_mpa_wind_count, non_strict_mpa_wind_count, kba_wind_count, ebsa_wind_count, wild_wind_count) %>% 
+  mutate(iteration = k)
+
+overlap_all<-rbind(all_mpa_buff, all_strict_buff, all_non_strict_buff, all_kba_buff, all_ebsa_buff, all_wild_buff) %>% 
+  mutate(iteration = k)
+
+# Store iterations
+
+count_results <- bind_rows(count_results, count_all) 
+overlap_results <- bind_rows(overlap_results, overlap_all)
+
+}
+
+write.csv(count_results, here(paste0("output_data/Random_turbines/Random_turbines_count_",iso3,".csv")))
+write.csv(overlap_results, here(paste0("output_data/Random_turbines/Random_turbines_overlap_",iso3,".csv")))
+
+}
+
+```
