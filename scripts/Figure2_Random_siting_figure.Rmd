@@ -1,0 +1,361 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-06-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tmap)
+library(ggplot2)
+library(tidyverse)
+library(here)
+library(countrycode)
+```
+
+# Data
+```{r}
+rand_results<-read.csv(here("output_data/Random_turbines/Random_results_output.csv"))
+
+sub_rand_results<-rand_results %>% 
+  select(rgn_key, type, category, rand_mean)
+```
+
+
+```{r}
+count<-read.csv(here("output_data/Paolo_results/Collated/Combined_count_by_country.csv")) %>% 
+  select(rgn_key, total_wind)
+```
+
+
+
+# Heatmap
+
+
+
+# Next plot for 1 km
+
+```{r}
+plot_df <-rand_results %>%
+  left_join(., count, by = "rgn_key") %>% 
+  mutate(
+    country = countrycode::countrycode(
+      rgn_key,
+      origin = "iso3c",
+      destination = "country.name"
+    ),
+    country = ifelse(is.na(country), rgn_key, country),
+    facet_label = paste0(country, " (n = ", scales::comma(total_wind), ")")
+  )
+
+country_order <- plot_df %>%
+  group_by(rgn_key) %>%
+  summarise(
+    max_abs_ses = max(abs(ses), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(max_abs_ses)) %>%
+  pull(rgn_key)
+
+plot_df <- plot_df %>%
+  mutate(
+    rgn_key = factor(rgn_key, levels = country_order),
+    category = factor(
+      category,
+      levels = c(
+        "Lower than random",
+        "Not different from random",
+        "Higher than random"
+      )
+    )
+  )
+```
+
+```{r}
+ggplot(plot_df,
+       aes(x = ses, y = type, colour = category)) +
+  annotate("rect", xmin = -Inf, xmax = -1.96, ymin = -Inf, ymax = Inf,
+           alpha = 0.08, fill = "green") +
+  annotate("rect", xmin = -1.96, xmax = 1.96, ymin = -Inf, ymax = Inf,
+           alpha = 0.08, fill = "grey") +
+  annotate("rect", xmin = 1.96, xmax = Inf, ymin = -Inf, ymax = Inf,
+           alpha = 0.08, fill = "red") +
+  geom_vline(xintercept = 0, linetype = "solid", colour = "black") +
+  geom_vline(xintercept = -1.96, linetype = "dashed", colour = "grey50") +
+  geom_vline(xintercept = 1.96, linetype = "dashed", colour = "grey50") +
+  geom_point(size = 3, alpha = 0.9) +
+  facet_wrap(~ facet_label, ncol = 4) +
+  scale_colour_manual(
+    values = c(
+      "Lower than random" = "#4DAF4A",
+      "Not different from random" = "black",
+      "Higher than random" = "#E41A1C"
+    )
+  ) +
+  labs(
+    x = "Standardized effect size (SES)",
+    y = "Biodiversity feature",
+    colour = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45)
+  )
+```
+
+
+```{r}
+ggsave(here("figures/Random_placement_turbines.png"), width = 14)
+```
+
+```{r}
+ggplot(plot_df,
+       aes(y = type)) +
+  geom_segment(
+    aes(
+      x = rand_q025,
+      xend = rand_q975,
+      yend = type
+    ),
+    colour = "grey60",
+    linewidth = 1.2
+  ) +
+  geom_point(
+    aes(x = rand_mean),
+    colour = "black",
+    size = 2.5
+  ) +
+  geom_point(
+    aes(x = observed, colour = category),
+    size = 3.2
+  ) +
+  facet_wrap(~ facet_label, ncol = 4, scales = "free_x") +
+  scale_colour_manual(
+    values = c(
+      "Lower than random" = "#4DAF4A",
+      "Not different from random" = "black",
+      "Higher than random" = "#E41A1C"
+    )
+  ) +
+  labs(
+    x = "Number of offshore wind structures overlapping biodiversity feature",
+    y = "Biodiversity feature",
+    colour = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+```
+
+```{r}
+ggplot(plot_df,
+       aes(y = type)) +
+  geom_segment(
+    aes(x = rand_q025, xend = rand_q975, yend = type),
+    colour = "grey60",
+    linewidth = 1.2
+  ) +
+  geom_point(aes(x = rand_mean), colour = "black", size = 2.5) +
+  geom_point(aes(x = observed, colour = category), size = 3.2, shape = 17) +
+  facet_wrap(~ facet_label, ncol = 4, scales = "free_x") +
+  scale_colour_manual(
+    values = c(
+      "Lower than random" = "#4DAF4A",
+      "Not different from random" = "black",
+      "Higher than random" = "#E41A1C"
+    )
+  ) +
+  labs(
+    x = "Overlap count",
+    y = "Biodiversity feature",
+    colour = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+  legend.position = "bottom",
+)
+```
+# Histograms
+```{r}
+#rand_overlap<-list.files(here("output_data/Random_turbines"), pattern = "overlap", full.names = TRUE)
+rand_count<-list.files(here("output_data/Random_turbines"), pattern = "turbines_count", full.names = TRUE)
+```
+
+```{r}
+rand_count_bind<-rand_count %>% 
+   map_dfr(~ read_csv(.x, col_types = cols(.default = col_character())) %>%
+            select(-starts_with("...")) %>%
+            mutate(source_file = basename(.x))) %>% 
+  mutate(num_rand_wind_overlap = as.numeric(num_rand_wind_overlap))
+```
+
+
+```{r}
+results<-read.csv(here("output_data/Paolo_results/Collated/Combined_count_by_country.csv"))
+```
+
+```{r}
+
+results_compare <- rand_count_bind %>%
+  mutate(
+    num_rand_wind_overlap = readr::parse_number(as.character(num_rand_wind_overlap))
+  ) %>%
+  left_join(results, by = c("rgn_key", "type")) %>%
+  mutate( overlap_wind2 = replace_na(overlap_wind, 0)
+  ) %>% 
+  left_join(., sub_rand_results, by = c("rgn_key", "type")) %>% 
+  mutate(rm = ifelse(is.na(rand_mean) == T & is.na(overlap_wind) == T, "Remove", "Keep")) %>% 
+  filter(rm == "Keep")
+
+    
+```
+
+
+
+```{r}
+test<-results_compare %>%
+  filter(rgn_key == "BEL",
+         type == "KBA")
+
+test<- rand_count_bind %>%
+  filter(rgn_key == "BEL",
+         type == "KBA")
+
+#ggplot(results_compare, aes(num_rand_wind_overlap)) +
+#  geom_histogram() +
+# facet_grid(type ~ rgn_key, scales = "free_x") #+
+ # geom_vline(xintercept = unique(results_compare$overlap_wind))
+```
+# One observed value per country/type
+
+```{r}
+obs_df <- results_compare %>%
+  group_by(rgn_key, type) %>%
+  summarise(
+    observed = first(na.omit(overlap_wind2)),
+    category = first(category),
+    .groups = "drop"
+  )
+```
+
+
+
+
+```{r}
+facet_lookup <- results_compare %>%
+  distinct(rgn_key, baseline_wind_count) %>%
+  mutate(
+    country = countrycode::countrycode(rgn_key, "iso3c", "country.name"),
+    country = ifelse(is.na(country), rgn_key, country),
+    facet_label = paste0(country, "\n(n = ", scales::comma(as.numeric(baseline_wind_count)), ")")
+  )
+
+plot_df <- results_compare %>%
+  left_join(facet_lookup, by = c("rgn_key", "baseline_wind_count"))
+
+mean_df <- plot_df %>%
+  group_by(rgn_key, type, facet_label) %>%
+  summarise(rand_mean = mean(num_rand_wind_overlap, na.rm = TRUE), .groups = "drop")
+
+obs_df <- plot_df %>%
+  group_by(rgn_key, type, facet_label) %>%
+  summarise(
+    observed = first(na.omit(overlap_wind2)),
+    category = first(category),
+    .groups = "drop"
+  )
+
+obs_df <- obs_df %>%
+  mutate(
+    category = recode(
+      category,
+      "Lower than random" = "Lower than random",
+      "Not different from random" = "Random",
+      "Higher than random" = "Higher than random"
+    ),
+    category = factor(
+      category,
+      levels = c(
+        "Lower than random",
+        "Random",
+        "Higher than random"
+      )
+    )
+  )
+
+
+```
+
+```{r}
+ggplot(plot_df, aes(x = num_rand_wind_overlap, y = type)) +
+  geom_violin(
+    fill = "grey85",
+    alpha = 0.5,
+    colour = "grey60",
+    scale = "width",
+    linewidth = 0.4
+  ) +
+  geom_point(
+  data = mean_df,
+  aes(x = rand_mean, y = type, shape = "Random mean"),
+  inherit.aes = FALSE,
+  colour = "black",
+  size = 2.8
+) +
+geom_point(
+  data = obs_df,
+  aes(x = observed, y = type, colour = category, shape = "Observed overlap"),
+  inherit.aes = FALSE,
+  size = 4,
+  alpha = 0.5
+) +
+scale_shape_manual(
+  values = c(
+    "Random mean" = 16,
+    "Observed overlap" = 17
+  ),
+  name = NULL
+) +
+  facet_wrap(~ facet_label, scales = "free", ncol = 3) +
+  scale_colour_manual(
+    values = c(
+      "Lower than random" = "#009E73",
+      "Random" = "grey35",
+      "Higher than random" = "#D55E00" 
+    ),
+    name = "Observed overlap"
+  ) +
+  labs(
+    x = "Number of overlapping offshore wind structures",
+    y = "Biodiversity feature"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank(),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    strip.text = element_text(face = "bold")
+  ) +
+  guides(
+  shape = guide_legend(order = 1),
+  colour = guide_legend(order = 2,
+                        override.aes = list(shape = 17, size = 4))
+)
+```
+
+```{r}
+ggsave(here("figures/Random_turbine_violin_plot.png"), width = 9)
+```
+
+
+
+
