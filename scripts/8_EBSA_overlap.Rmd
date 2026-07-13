@@ -19,17 +19,21 @@ library(exactextractr)
 ```
 
 # EBSAs
-
+https://www.cbd.int/ebsa/repository
 ```{r}
-ebsa<-st_read(here("raw_data/EBSA/Ecologically_or_Biologically_Significant_Marine_Areas_(EBSAs).shp"))%>% 
-    st_transform(., crs = "ESRI:54017")
+ebsa<-st_read(here("raw_data/EBSA/Ecologically_or_Biologically_Significant_Marine_Areas_(EBSAs).shp")) %>% 
+  st_make_valid(.)
+
+ebsa_ll <- st_transform(ebsa, 4326)
+   # st_transform(., crs = "ESRI:54017")
 ```
 
 ```{r}
 ebsa_diss<-ebsa%>% 
   mutate(diss = 1) %>%
   group_by(diss) %>% 
-  summarise(.) 
+  summarise(.) %>% 
+  st_transform("ESRI:54017")
 ```
 
 # EEZ intersect
@@ -47,6 +51,12 @@ eez_ebsa<-st_intersection(eez,ebsa_diss) %>%
 eez_ebsa<-eez_ebsa %>%
   select(rgn_key, area_km2, ebsa_km2)
 ```
+
+```{r}
+test<-eez %>% 
+  filter(rgn_key == 'GBR')
+```
+
 
 ```{r}
 st_write(eez_ebsa, here("output_data/biodiversity_features/EBSA_EEZ_intersect.shp"))
