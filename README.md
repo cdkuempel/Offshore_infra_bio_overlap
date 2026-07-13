@@ -1,4 +1,4 @@
-This code accompnaies the paper "Offshore wind development creates emerging conflicts with globally important biodiversity areas" by Caitlin D. Kuempel, Maxence Fontaine, and Jackson Stockbridge.
+This code accompnaies the paper "Offshore wind siting suggests limited preferential avoidance of globally important biodiversity areas" by Caitlin D. Kuempel, Maxence Fontaine, and Jackson Stockbridge.
 
 Raw data needed to recreate the analysis can be downloaded or requested from the following sources:
 
