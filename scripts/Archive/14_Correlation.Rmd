@@ -1,0 +1,133 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-02-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(here)
+library(tidyverse)
+library(sf)
+library(ggplot2)
+library(tmap)
+library(maps)
+library(rnaturalearth)
+library(countrycode)
+library(ggrepel)
+library(glue)
+```
+
+# Data
+
+```{r}
+iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv"))
+global_results<-read_csv(here("output_data/Paolo_results/Collated/Global_all_results.csv"))
+```
+
+```{r}
+siting_dat<-iso3_results %>% 
+  select(rgn_key, area_km2, prop_int, buff, iso3_wind_km2, total_wind, overlap_wind, type, prop_count, feature_km2, int_km2)
+
+
+all_siting<-siting_dat %>% 
+  mutate(name = countrycode(sourcevar = rgn_key, origin = "iso3c", destination = "country.name.en")) %>% 
+  mutate(name = ifelse(is.na(name) == T, "World", name),
+         buff2 = as.character(buff))
+
+all_siting2<-all_siting %>% 
+  filter(!rgn_key == "World")
+```
+
+# Number vs proportion
+
+```{r}
+site_sub<-all_siting2 %>% filter(buff == 1, type == "All") %>% 
+  mutate(density_wind_km2 = total_wind/area_km2) #%>% 
+ # filter(!rgn_key == "BEL")
+
+#cor.test(site_sub$overlap_wind, site_sub$total_wind)
+#cor.test(site_sub$overlap_wind, site_sub$density_wind_km2)
+
+#cor.test(site_sub$prop_count, site_sub$total_wind)
+#cor.test(site_sub$prop_count, site_sub$density_wind_km2)
+
+#cor.test(site_sub$prop_int, site_sub$total_wind)
+cor.test(site_sub$prop_int, site_sub$density_wind_km2, method = "spearman")
+```
+
+```{r}
+cor.test(site_sub$prop_int, site_sub$density_wind_km2)
+
+plot(site_sub$prop_int, site_sub$density_wind_km2)
+
+```
+
+
+
+# Plots
+
+```{r}
+cor_stats <- all_siting2 %>%
+  filter(type == "All", buff %in% c(1, 15, 25)) %>%
+  mutate(
+    density_wind_km2 = total_wind / area_km2
+  ) %>%
+  group_by(buff) %>%
+  summarise(
+    rho = cor(prop_int, density_wind_km2, method = "spearman", use = "complete.obs"),
+    p = cor.test(prop_int, density_wind_km2, method = "spearman")$p.value,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    label = glue("Spearman's \u03c1 = {round(rho, 2)}\nP = {ifelse(p < 0.001, '< 0.001', round(p, 3))}")
+  )
+
+cor_stats
+
+```
+
+```{r}
+plot_df <- all_siting2 %>%
+  filter(type == "All", buff %in% c(1, 15, 25)) %>%
+  mutate(
+    density_wind_km2 = total_wind / area_km2,
+    buff_lab = paste0(buff, " km buffer")
+  )
+
+cor_stats <- cor_stats %>%
+  mutate(buff_lab = paste0(buff, " km buffer"))
+
+ggplot(plot_df,
+       aes(x = density_wind_km2,
+           y = prop_int)) +
+  geom_point(size = 2.8, alpha = 0.8) +
+  geom_smooth(method = "lm", se = TRUE, linewidth = 0.7) +
+  geom_text_repel(
+    aes(label = rgn_key),
+    size = 3,
+    max.overlaps = 20
+  ) +
+  geom_text(
+    data = cor_stats,
+    aes(x = Inf, y = Inf, label = label),
+    inherit.aes = FALSE,
+    hjust = 1.1,
+    vjust = 1.2,
+    size = 3.5
+  ) +
+  facet_wrap(~ buff_lab, scales = "free") +
+  theme_bw() +
+  labs(
+    x = expression("Offshore wind density (structures km"^-2*" EEZ)"),
+    y = "Proportion of biodiversity area intersected"  )
+```
+```{r}
+ggsave(here("figures/Supplemental_correlation_fig.png"), width = 10)
+```
+
