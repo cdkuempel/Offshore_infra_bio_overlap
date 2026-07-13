@@ -1,0 +1,124 @@
+---
+title: "MPA_infrastructure_overlap"
+author: "Caitie"
+date: "2025-09-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(terra)
+library(sf)
+library(tidyverse)
+library(here)
+library(exactextractr)
+```
+
+# Prep MPAs
+
+Downloaded Sept 22 2025. This has already been cleaned using the wdapr package. It has been filter as follows:
+
+coi2<-c("RUS","BRA","FIN","FRA","GBR","BEL","CAN","ESP","DEU","DNK","IRL","SWE","NLD","NOR","GRC","ITA","POL","PRT" ,"TWN", "TUR" ,"TON", "USA" ,"VNM" ,"CHN" ,"ARE" ,"JPN" ,"NAM" ,"NFK", "CHL", "LKA", "KOR")
+
+filter(ISO3 %in% coi2,
+         MARINE %in% c(1,2),
+         STATUS %in% c("Designated", "Inscribed", "Established")) %>% 
+
+```{r}
+mpa<-st_read(here("raw_data/WDPA/Subset_WDPA_Sept2025.shp")) %>% 
+    st_transform(., crs = "ESRI:54017")
+```
+
+# EEZ intersect
+
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+```
+
+```{r}
+eez_mpa<-st_intersection(eez,mpa) %>% 
+  mutate(mpa_km2 = as.numeric(st_area(.)*1e-6))
+
+eez_mpa<-eez_mpa %>%
+  select(rgn_key, area_km2, mpa_km2)
+
+test<-eez_mpa %>% 
+  filter(rgn_key == "BEL")
+```
+
+# Infrastructure data
+```{r}
+wind_points<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
+wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
+  rename(wind_km2 = area_km2)
+```
+
+
+# Infrastructure intersect
+
+
+```{r}
+eez_wind1<-st_intersection(eez, wind1) %>% 
+  mutate(eez_wind_buff_km2 = as.numeric(st_area(.)*1e-6))
+
+eez_wind25<-st_intersection(eez, wind15) %>% 
+  mutate(eez_wind_buff_km2 = as.numeric(st_area(.)*1e-6))
+
+eez_wind15<-st_intersection(eez, wind25) %>% 
+  mutate(eez_wind_buff_km2 = as.numeric(st_area(.)*1e-6))
+```
+
+Area for buffers
+
+```{r}
+mpa_wind25<-st_intersection(eez_mpa, eez_wind25) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 25) %>% 
+  select(-diss)
+```
+
+```{r}
+mpa_wind15<-st_intersection(eez_mpa, eez_wind15) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 15) %>% 
+  select(-diss)
+```
+
+```{r}
+mpa_wind1<-st_intersection(eez_mpa, eez_wind1) %>% 
+  mutate(int_km2 = as.numeric(st_area(.)*1e-6),
+         buff = 1) %>% 
+  select(-diss)
+```
+
+```{r}
+all_buff<-rbind(mpa_wind25, mpa_wind15, mpa_wind1) %>% 
+  mutate(prop_int = int_km2/mpa_km2,
+         type = "MPA") %>% 
+  as.data.frame() %>% 
+  select(-geometry)
+```
+
+```{r}
+all_buff$cross_border<- all_buff$rgn_key != all_buff$rgn_key.1
+```
+
+```{r}
+test<-all_buff %>% 
+  filter(cross_border == TRUE,
+         buff == 25)
+
+sum(test$int_km2)/sum(mpa_wind25$int_km2)
+```
+
+
+
