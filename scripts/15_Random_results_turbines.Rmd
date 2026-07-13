@@ -1,0 +1,157 @@
+---
+title: "Randomized_results"
+author: "Caitie"
+date: "2026-05-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tidyverse)
+library(here)
+library(terra)
+```
+
+# List files
+
+```{r}
+#rand_overlap<-list.files(here("output_data/Random_turbines"), pattern = "overlap", full.names = TRUE)
+rand_count<-list.files(here("output_data/Random_turbines"), pattern = "turbines_count", full.names = TRUE)
+```
+
+```{r}
+rand_count_bind<-rand_count %>% 
+   map_dfr(~ read_csv(.x, col_types = cols(.default = col_character())) %>%
+            select(-starts_with("...")) %>%
+            mutate(source_file = basename(.x))) %>% 
+  mutate(num_rand_wind_overlap = as.numeric(num_rand_wind_overlap))
+```
+
+```{r}
+random_summary_count <- rand_count_bind %>%
+  group_by(rgn_key, type) %>%
+  summarise(
+    random_mean = mean(num_rand_wind_overlap, na.rm = TRUE),
+    random_median = median(num_rand_wind_overlap, na.rm = TRUE),
+    random_sd = sd(num_rand_wind_overlap, na.rm = TRUE),
+    q025 = quantile(num_rand_wind_overlap, 0.025, na.rm = TRUE),
+    q975 = quantile(num_rand_wind_overlap, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+```
+
+
+```{r}
+test<-random_summary_count %>% 
+  filter(random_mean>0)
+```
+
+# Convergence
+
+```{r}
+convergence <- rand_count_bind %>%
+  arrange(rgn_key, type, iteration) %>%
+  group_by(rgn_key, type) %>%
+  mutate(
+    running_mean = cummean(num_rand_wind_overlap),
+    running_median = sapply(seq_along(num_rand_wind_overlap), function(i) median(num_rand_wind_overlap[1:i], na.rm = T)),
+    running_q025 = sapply(seq_along(num_rand_wind_overlap), function(i) quantile(num_rand_wind_overlap[1:i], 0.025, na.rm = T)),
+    running_q975 = sapply(seq_along(num_rand_wind_overlap), function(i) quantile(num_rand_wind_overlap[1:i], 0.975, na.rm = T))
+  ) %>%
+  ungroup()
+```
+
+```{r}
+ggplot(convergence,
+       aes(x = iteration, y = running_mean, group = interaction(rgn_key, type))) +
+  geom_line() +
+  facet_grid(type ~ rgn_key, scales = "free_y") +
+  theme_bw() +
+  labs(
+    x = "Number of random iterations",
+    y = "Running mean count",
+    title = "Convergence of random count estimates"
+  )
+```
+
+```{r}
+diagnostics <- rand_count_bind %>%
+  group_by(rgn_key, type) %>%
+  summarise(
+    n_iter = n_distinct(iteration),
+    mean = mean(num_rand_wind_overlap, na.rm = TRUE),
+    sd = sd(num_rand_wind_overlap, na.rm = TRUE),
+    cv = ifelse(mean == 0, NA, sd / mean),
+    .groups = "drop"
+  )
+```
+
+
+
+# Read in actual results
+
+```{r}
+results<-read.csv(here("output_data/Paolo_results/Collated/Combined_count_by_country.csv"))
+```
+
+
+```{r}
+join<-full_join(results, random_summary_count, by = c("rgn_key", "type"))
+
+join2 <- join %>%
+  mutate(across(where(is.numeric), ~replace_na(.x, 0)))
+```
+
+```{r}
+results_compare <- rand_count_bind %>%
+  mutate(
+    num_rand_wind_overlap = readr::parse_number(as.character(num_rand_wind_overlap))
+  ) %>%
+  left_join(results, by = c("rgn_key", "type")) %>%
+  mutate(
+    overlap_wind2 = replace_na(overlap_wind, 0)
+  ) %>% 
+  group_by(rgn_key, type) %>%
+  summarise(
+    observed = first(overlap_wind2),
+    n_iter = sum(!is.na(num_rand_wind_overlap)),
+    rand_mean = mean(num_rand_wind_overlap, na.rm = TRUE),
+    rand_sd = sd(num_rand_wind_overlap, na.rm = TRUE),
+    rand_q025 = quantile(num_rand_wind_overlap, 0.025, na.rm = TRUE),
+    rand_q975 = quantile(num_rand_wind_overlap, 0.975, na.rm = TRUE),
+    ses = ifelse(rand_sd == 0, NA_real_, (observed - rand_mean) / rand_sd),
+    p_lower = (sum(num_rand_wind_overlap <= observed, na.rm = TRUE) + 1) / (n_iter + 1),
+    p_upper = (sum(num_rand_wind_overlap >= observed, na.rm = TRUE) + 1) / (n_iter + 1),
+    p_two_sided = pmin(1, 2 * pmin(p_lower, p_upper)),
+    .groups = "drop"
+  ) %>% 
+  mutate(
+    category = case_when(
+      p_lower < 0.05 ~ "Lower than random",
+      p_upper < 0.05 ~ "Higher than random",
+      TRUE ~ "Not different from random"
+    )
+  )
+```
+
+
+```{r}
+rand_count_bind %>%
+  filter(rgn_key == "CHN",
+         type == "MPA") %>%
+  ggplot(aes(num_rand_wind_overlap)) +
+  geom_histogram() +
+  geom_vline(xintercept = 66)
+```
+
+```{r}
+write.csv(results_compare, here("output_data/Random_turbines/Random_results_output.csv"))
+```
+
+
+

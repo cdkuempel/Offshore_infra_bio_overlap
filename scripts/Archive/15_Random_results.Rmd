@@ -1,0 +1,222 @@
+---
+title: "Randomized_results"
+author: "Caitie"
+date: "2026-05-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tidyverse)
+library(here)
+library(terra)
+```
+
+# List files
+
+```{r}
+rand_overlap<-list.files(here("output_data/Random_turbines"), pattern = "overlap", full.names = TRUE)
+rand_count<-list.files(here("output_data/Random_turbines"), pattern = "count", full.names = TRUE)
+```
+
+```{r}
+rand_overlap_bind <- rand_overlap %>%
+  map_dfr(~ read_csv(.x, col_types = cols(.default = col_character())) %>%
+            select(-starts_with("...")) %>%
+            mutate(source_file = basename(.x))) %>%
+  mutate(
+    across(
+      c(feature_km2, rand_wind_km2, int_km2, prop_int, buff, iteration),
+      as.numeric
+    )
+  )
+```
+
+
+
+```{r}
+random_summary_overlap <- rand_overlap_bind %>%
+  group_by(rgn_key, type, buff) %>%
+  summarise(
+    random_mean = mean(prop_int, na.rm = TRUE),
+    random_median = median(prop_int, na.rm = TRUE),
+    random_sd = sd(prop_int, na.rm = TRUE),
+    q025 = quantile(prop_int, 0.025, na.rm = TRUE),
+    q975 = quantile(prop_int, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+```
+
+
+```{r}
+test<-random_summary_overlap %>% 
+  filter(random_mean>0)
+```
+
+# Convergence
+
+```{r}
+convergence <- rand_overlap_bind %>%
+  arrange(rgn_key, type, buff, iteration) %>%
+  group_by(rgn_key, type, buff) %>%
+  mutate(
+    running_mean = cummean(prop_int),
+    running_median = sapply(seq_along(prop_int), function(i) median(prop_int[1:i])),
+    running_q025 = sapply(seq_along(prop_int), function(i) quantile(prop_int[1:i], 0.025)),
+    running_q975 = sapply(seq_along(prop_int), function(i) quantile(prop_int[1:i], 0.975))
+  ) %>%
+  ungroup()
+```
+
+```{r}
+ggplot(convergence,
+       aes(x = iteration, y = running_mean)) +
+  geom_line() +
+  facet_grid(type+buff ~ rgn_key, scales = "free_y") +
+  theme_bw() +
+  labs(
+    x = "Number of random iterations",
+    y = "Running mean overlap",
+    title = "Convergence of random overlap estimates"
+  )
+```
+
+```{r}
+diagnostics <- rand_overlap_bind %>%
+  group_by(rgn_key, type, buff) %>%
+  summarise(
+    n_iter = n_distinct(iteration),
+    mean = mean(prop_int, na.rm = TRUE),
+    sd = sd(prop_int, na.rm = TRUE),
+    cv = ifelse(mean == 0, NA, sd / mean),
+    .groups = "drop"
+  )
+```
+
+
+
+# Read in actual results
+
+```{r}
+results<-read.csv(here("output_data/Paolo_results/Collated/Combined_area_by_country.csv")) %>% 
+  select(rgn_key, feature_km2, buff, type, prop_wind_int) %>% 
+  filter(type != "All")
+
+
+```
+
+```{r}
+feature_iso3<-results %>% 
+  select(rgn_key, feature_km2, type) %>% 
+  distinct()
+```
+
+
+```{r}
+join<-full_join(results, random_summary_overlap, by = c("rgn_key", "buff", "type"))
+
+join2 <- join %>%
+  mutate(across(where(is.numeric), ~replace_na(.x, 0)))
+
+join3<-join2 %>% 
+  filter(feature_km2>0)
+
+```
+
+
+
+```{r}
+empirical_test <- rand_overlap_bind %>%
+  group_by(rgn_key, buff, type, feature_km2) %>%
+  summarise(
+    random_values = list(prop_int[!is.na(prop_int)]),
+    .groups = "drop"
+  ) %>%
+  left_join(results, by = c("rgn_key", "buff", "type", "feature_km2")) %>%
+  mutate(prop_wind_int2 = replace_na(prop_wind_int, 0)) %>% 
+  filter(prop_wind_int2>0) %>% 
+  rowwise() %>%
+  mutate(
+      percentile = mean(unlist(random_values) < prop_wind_int2) +
+        0.5 * mean(unlist(random_values) == prop_wind_int2),
+      cat = case_when(
+        percentile <= 0.05 ~ "Better than random",
+        percentile >= 0.95 ~ "Worse than random",
+        TRUE ~ "Random"
+      )
+    ) %>%
+    ungroup()
+```
+
+```{r}
+empirical_df<-as.data.frame(empirical_test) %>% 
+  select(-random_values) %>% 
+  filter(!is.na(feature_km2) == TRUE)
+
+write.csv(empirical_df, here("output_data/Random_turbines/Random_empirical_results.csv"))
+
+empirical_df25<-empirical_df %>% 
+  filter(buff == 25)
+
+write.csv(empirical_df25, here("output_data/Random_turbines/Random_empirical_results_25km.csv"))
+
+empirical_df1<-empirical_df %>% 
+  filter(buff == 1)
+
+write.csv(empirical_df1, here("output_data/Random_turbines/Random_empirical_results_1km.csv"))
+
+empirical_df15<-empirical_df %>% 
+  filter(buff == 15)
+
+write.csv(empirical_df15, here("output_data/Random_turbines/Random_empirical_results_15km.csv"))
+
+```
+
+# Test
+
+```{r}
+results_1km<-results %>% 
+  filter(buff == 1)
+```
+
+At 1 km, 12 countries overlapped with a biodiversity features
+
+CHL, RUS, FIN, DNK, DEU, POL, GBR, SWE, NLD, VNM, CHN, CAN
+
+RUS, CHL, POL, CAN were removed due to not having enough turbines
+
+# Countries omtited 
+
+Var1 Freq
+1  CAN    1
+2  CHL    1
+3  NOR    2
+4  POL    3
+5  RUS    2
+
+# Missing countries
+
+6 Ireland
+7 Taiwan
+8 South Korea
+9 USA
+10 France
+11 Spain
+
+# Included
+12 Vietnam
+13 United Kingdom
+14 Sweden
+15 Netherlands
+16 Germany
+17 Finland
+18 Denmark
+19 China
+
+
+

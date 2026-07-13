@@ -1,0 +1,513 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-06-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tidyverse)
+library(here)
+library(terra)
+library(dbscan)
+library(furrr)
+library(future)
+library(purrr)
+library(progressr)
+```
+# Wind turbine locations
+
+```{r}
+wind_points<-st_read(here("output_data/Paolo_results/Wind_pt_EEZ_intersect.shp"))
+```
+# Environmentally suitable areas
+
+```{r}
+env_suit<-rast(here("raw_data/Wind/wind_pd_mask_NoMPAs.tif"))
+env_suit[env_suit>0]<- 1
+#env_suit[is.na(env_suit)]<-0
+
+env_suit_proj<-project(env_suit, "ESRI:54017")
+```
+
+```{r}
+#env_suit_poly<-as.polygons(env_suit_proj)
+#env_suit_sf<-st_as_sf(env_suit_poly)
+```
+
+```{r}
+# 1. Convert your actual turbine sf points to a binary raster template
+# matching your global suitability raster's resolution and extent
+turbine_raster <- rasterize(vect(wind_points), env_suit_proj, field = 1, background = 0)
+
+# 2. Apply a focal maximum buffer (e.g., a 5x5 window of pixels) 
+# This expands the single turbine pixels into small regional zones
+# Adjust the 'w' (window size) depending on your raster resolution
+turbine_buffer_rast <- focal(turbine_raster, w = 7, fun = max)
+
+# 3. Combine the layers using a logical OR condition
+# A cell is now valid if it is environmentally suitable OR near an existing turbine
+final_suit_raster <- (env_suit_proj == 1) | (turbine_buffer_rast == 1)
+
+writeRaster(final_suit_raster, here("output_data/temp/temp_suitability.tif"), overwrite = TRUE)
+```
+
+
+# EEZ
+```{r}
+eez<-st_read(here("raw_data/EEZ/eez_simple.shp")) %>% 
+   st_make_valid(.) %>% 
+  st_transform(., crs = "ESRI:54017")
+```
+Intersect EEZ and env suitability
+
+```{r}
+#eez_env_suit<-st_intersection(eez,env_suit_sf)
+
+#eez_env_suit<-eez_env_suit %>% 
+#  filter(gwa3_250_powerdensity_100m == 1)
+```
+# Biodiversity layers (intersected with EEZ)
+
+```{r}
+mpa<-st_read(here("output_data/biodiversity_features/MPA_EEZ_intersect.shp"))
+
+strict_mpa<-st_read(here("output_data/biodiversity_features/Strict_MPA_EEZ_intersect.shp"))
+  
+#non_strict_mpa<-st_read(here("output_data/biodiversity_features/Non-strict_MPA_EEZ_intersect.shp"))
+
+kba<-st_read(here("output_data/biodiversity_features/KBA_EEZ_intersect.shp"))
+  
+ebsa<-st_read(here("output_data/biodiversity_features/EBSA_EEZ_intersect.shp"))
+
+wild<-st_read(here("output_data/biodiversity_features/Wilderness_EEZ_intersect.shp"))
+```
+
+
+# Wind farm clusters
+
+Helper functions
+
+```{r}
+safe_count <- function(feature_u, turbines, type_name, baseline_count, rand_count, suit_count) {
+  
+  if (nrow(feature_u) == 0) return(NULL) # Handled by empty check
+  
+  # Fast logical point-in-polygon matrix (returns TRUE/FALSE)
+  inside_matrix <- st_intersects(turbines, feature_u, sparse = FALSE)
+  overlap_count <- sum(inside_matrix)
+  
+  tibble(
+    rgn_key = unique(turbines$rgn_key)[1],
+    num_rand_wind_overlap = overlap_count,
+    type = type_name,
+    baseline_wind_count = baseline_count,
+    rand_turbines = rand_count,
+    suitable_turbines = suit_count
+  )
+}
+```
+
+```{r}
+safe_empty_feature <- function(feature, iso3, type_name) {
+  
+  if (is.null(feature) || nrow(feature) == 0) {
+    no_feature <- TRUE
+  } else {
+    feature <- st_make_valid(feature)
+    area_km2 <- sum(as.numeric(st_area(feature)) * 1e-6, na.rm = TRUE)
+    no_feature <- is.na(area_km2) || area_km2 == 0
+  }
+  
+  if (no_feature) {
+    message("Skipping ", iso3, " - ", type_name, ": no feature area in country")
+    
+    return(list(
+      count = tibble(
+        rgn_key = iso3,
+        type = type_name,
+        num_rand_wind_overlap = NA_real_
+      )
+    ))
+  }
+  
+  NULL
+}
+```
+
+
+# Get countries to run
+```{r}
+
+country_order <- wind_points %>%
+  st_drop_geometry() %>%
+  count(rgn_key, sort = TRUE) %>%
+  filter(n >= 50) %>%
+  mutate(rgn_key = as.character(rgn_key)) %>%
+  pull(rgn_key)
+
+```
+
+```{r}
+for(i in 1:length(country_order)){
+  # Suitable area
+  sub_eez<-eez %>% 
+    filter(rgn_key == country_order[[i]])
+  
+  print(country_order[[i]])
+  
+   if (nrow(sub_eez) == 0) {
+    stop(paste("ISO3 code not found:", country_order[[i]]))
+  }
+  
+  # 3. Ensure the polygon matches the raster's Coordinate Reference System (CRS)
+  if (st_crs(sub_eez) != st_crs(final_suit_raster)) {
+    sub_eez <- st_transform(sub_eez, st_crs(final_suit_raster))
+  }
+  
+  # Convert sf object to a terra SpatVector for speed
+  country_vect <- vect(sub_eez)
+  
+  # 4. CROP FIRST (Cuts the global raster down to a small regional box)
+  country_raster_crop <- crop(final_suit_raster, country_vect)
+  
+  # 5. MASK SECOND (Turns all pixels outside the exact country border to NA)
+  country_raster_masked <- mask(country_raster_crop, country_vect)
+  
+  writeRaster(country_raster_masked, here(paste0("output_data/temp/Suitable_cells_", country_order[[i]], ".tif")))
+
+}
+```
+
+
+# Parallel processing
+
+Write function
+
+```{r}
+
+run_country <- function(iso3){
+  
+    final_suit_files <- list.files(here("output_data/temp"), full.names = T)
+  
+#clustered_outputs <- list()
+#noise_summary <- list()
+
+  # Subset to country
+  sub <- wind_points %>% 
+    filter(rgn_key == iso3)
+  
+  print(iso3)
+  
+  sub_cluster <- sub %>%
+  mutate(
+    cluster_id = dbscan(
+      st_coordinates(.),
+      eps = 5000,
+      minPts = 5
+    )$cluster
+  )
+
+  
+  # Find spatial cluster centroids
+ cluster_centroids <- sub_cluster %>%
+  filter(cluster_id != 0) %>%
+  group_by(cluster_id) %>%
+  summarise(.groups = "drop") %>%
+  st_centroid()
+  
+  cluster_centroids_df <- cluster_centroids %>%
+  mutate(
+    centroid_x = st_coordinates(geometry)[, 1],
+    centroid_y = st_coordinates(geometry)[, 2]
+  ) %>%
+  st_drop_geometry() %>%
+  select(cluster_id, centroid_x, centroid_y)
+  
+  # Calculate relative turbine positions
+  coords_matrix <- st_coordinates(sub_cluster)
+
+turbines_relative <- sub_cluster %>%
+  mutate(
+    turbine_x = coords_matrix[, 1],
+    turbine_y = coords_matrix[, 2]
+  ) %>%
+  left_join(cluster_centroids_df, by = "cluster_id") %>%
+  mutate(
+    # True metric offsets relative to center
+    dx = turbine_x - centroid_x,
+    dy = turbine_y - centroid_y
+  )
+  
+  # Save clustered turbine output
+ # clustered_outputs[[iso3]] <- sub_cluster
+  
+  noise_summary_row <- tibble(
+    rgn_key = iso3,
+    n_turbines = nrow(sub_cluster),
+    n_clusters = length(unique(sub_cluster$cluster_id[sub_cluster$cluster_id > 0])),
+    n_noise = sum(sub_cluster$cluster_id == 0),
+    prop_noise = mean(sub_cluster$cluster_id == 0),
+    eps = 5000,
+    minPts = 5
+  )
+  
+  path <- grep(iso3, final_suit_files, value = TRUE)
+
+# 2. Read the specific raster file
+
+  country_raster_masked<- rast(path)
+  candidate_df <- as.data.frame(country_raster_masked, xy = TRUE, na.rm = TRUE)
+  candidate_xy <- as.matrix(candidate_df[, c("x", "y")])
+                                  
+                                  
+ if (nrow(candidate_xy) == 0) {
+  warning(paste("No candidate cells found in the raster for country:", iso3))
+  return(NULL)
+}
+  
+  # Biodiversity layer subsets
+  sub_mpa <- mpa %>% 
+    filter(rgn_key == iso3) %>% 
+    distinct(geometry, .keep_all = TRUE)
+  
+  sub_strict <- strict_mpa %>% 
+    filter(rgn_key == iso3) %>% 
+    distinct(geometry, .keep_all = TRUE)
+  
+  sub_kba <- kba %>% 
+    filter(rgn_key == iso3) %>% 
+    distinct(geometry, .keep_all = TRUE)
+  
+  sub_ebsa <- ebsa %>% 
+    filter(rgn_key == iso3) %>% 
+    distinct(geometry, .keep_all = TRUE)
+  
+  sub_wild <- wild %>% 
+    filter(rgn_key == iso3) %>% 
+    distinct(geometry, .keep_all = TRUE)
+  
+  # Pre-union biodiversity geometries once per country
+  # These are only used if the feature is not empty
+sub_mpa_u <- if (nrow(sub_mpa) > 0) st_sf(geometry = st_union(st_make_valid(sub_mpa))) else sub_mpa
+sub_strict_u <- if (nrow(sub_strict) > 0) st_sf(geometry = st_union(st_make_valid(sub_strict))) else sub_strict
+sub_kba_u    <- if (nrow(sub_kba) > 0)    st_sf(geometry = st_union(st_make_valid(sub_kba))) else sub_kba
+sub_ebsa_u   <- if (nrow(sub_ebsa) > 0)   st_sf(geometry = st_union(st_make_valid(sub_ebsa))) else sub_ebsa
+sub_wild_u   <- if (nrow(sub_wild) > 0)   st_sf(geometry = st_union(st_make_valid(sub_wild))) else sub_wild
+  
+  # Storage objects
+  count_results <- data.frame()
+  failed_iterations <- tibble()
+  
+  #start_time <- Sys.time()
+  #cat("Started:", format(start_time), "\n")
+  
+  cluster_ids <- unique(turbines_relative$cluster_id[turbines_relative$cluster_id > 0])
+  
+  for (k in 1:10) {
+    
+    random_turbines_list <- list()
+    valid_config <- TRUE
+    max_attempts <- 1000
+    
+    for (cl in cluster_ids) {
+      
+      this_cluster <- turbines_relative %>%
+        filter(cluster_id == cl) %>%
+        st_drop_geometry()
+      
+      cluster_valid <- FALSE
+      attempt <- 1
+      
+          while (!cluster_valid && attempt <= max_attempts) {
+      xy <- candidate_xy[sample(seq_len(nrow(candidate_xy)), 1), , drop = FALSE]
+      
+      theta <- runif(1, 0, 2 * pi)
+      scale_factor <- runif(1, 0.7, 1.0)
+      
+      # Pure numeric math (Lightning fast)
+      dx_new <- scale_factor * (this_cluster$dx * cos(theta) - this_cluster$dy * sin(theta))
+      dy_new <- scale_factor * (this_cluster$dx * sin(theta) + this_cluster$dy * cos(theta))
+      
+      new_x_coords <- as.numeric(xy[1, 1]) + dx_new
+      new_y_coords <- as.numeric(xy[1, 2]) + dy_new
+      
+      # Matrix lookup directly into terra extraction
+      mat_coords <- cbind(new_x_coords, new_y_coords)
+      extracted_vals <- terra::extract(country_raster_masked, mat_coords)[, 1] 
+      
+      cluster_valid <- all(!is.na(extracted_vals) & extracted_vals == 1)
+      
+      if (cluster_valid) {
+        # ONLY build the heavy sf object once we know this layout works!
+        this_try <- this_cluster %>%
+          mutate(new_x = new_x_coords, new_y = new_y_coords) %>%
+          st_as_sf(coords = c("new_x", "new_y"), crs = crs(country_raster_masked))
+      }
+      attempt <- attempt + 1
+    }
+      
+      if (!cluster_valid) {
+        valid_config <- FALSE
+        break
+      }
+      
+      random_turbines_list[[as.character(cl)]] <- this_try
+    }
+    
+    if (!valid_config) {
+      failed_iterations <- bind_rows(
+        failed_iterations,
+        tibble(
+          rgn_key = iso3,
+          iteration = k,
+          reason = "No valid random configuration found",
+          max_attempts = max_attempts
+        )
+      )
+      next
+    }
+    
+    random_turbines <- bind_rows(random_turbines_list)
+    
+    # Already checked that all random turbines are suitable
+    # Avoid expensive st_intersection()
+    rand_turbines_suit <- random_turbines
+    
+    # -------------------------
+    # Calculate overlap counts
+    # -------------------------
+    
+    # -------------------------
+    # Pre-calculate counts for efficiency
+    # -------------------------
+    base_n  <- nrow(sub)
+    rand_n  <- nrow(random_turbines)
+    suit_n  <- nrow(rand_turbines_suit)
+    
+    # -------------------------
+    # Process Overlaps cleanly using the new safe_count arguments
+    # -------------------------
+    
+    # MPA
+    empty_check <- safe_empty_feature(sub_mpa, iso3, "MPA")
+    if (!is.null(empty_check)) {
+      mpa_count <- empty_check$count %>% mutate(num_rand_wind_overlap = NA, baseline_wind_count = base_n, rand_turbines = rand_n, suitable_turbines = suit_n)
+    } else {
+      mpa_count <- safe_count(sub_mpa_u, rand_turbines_suit, "MPA", base_n, rand_n, suit_n)
+    }
+    
+    # Strict MPA
+    empty_check <- safe_empty_feature(sub_strict, iso3, "Strict MPA")
+    if (!is.null(empty_check)) {
+      strict_mpa_count <- empty_check$count %>% mutate(num_rand_wind_overlap = NA, baseline_wind_count = base_n, rand_turbines = rand_n, suitable_turbines = suit_n)
+    } else {
+      strict_mpa_count <- safe_count(sub_strict_u, rand_turbines_suit, "Strict MPA", base_n, rand_n, suit_n)
+    }
+    
+    # KBA
+    empty_check <- safe_empty_feature(sub_kba, iso3, "KBA")
+    if (!is.null(empty_check)) {
+      kba_count <- empty_check$count %>% mutate(num_rand_wind_overlap = NA, baseline_wind_count = base_n, rand_turbines = rand_n, suitable_turbines = suit_n)
+    } else {
+      kba_count <- safe_count(sub_kba_u, rand_turbines_suit, "KBA", base_n, rand_n, suit_n)
+    }
+    
+    # EBSA
+    empty_check <- safe_empty_feature(sub_ebsa, iso3, "EBSA")
+    if (!is.null(empty_check)) {
+      ebsa_count <- empty_check$count %>% mutate(num_rand_wind_overlap = NA, baseline_wind_count = base_n, rand_turbines = rand_n, suitable_turbines = suit_n)
+    } else {
+      ebsa_count <- safe_count(sub_ebsa_u, rand_turbines_suit, "EBSA", base_n, rand_n, suit_n)
+    }
+    
+    # Wilderness
+    empty_check <- safe_empty_feature(sub_wild, iso3, "Wilderness")
+    if (!is.null(empty_check)) {
+      wild_count <- empty_check$count %>% mutate(num_rand_wind_overlap = NA, baseline_wind_count = base_n, rand_turbines = rand_n, suitable_turbines = suit_n)
+    } else {
+      wild_count <- safe_count(sub_wild_u, rand_turbines_suit, "Wilderness", base_n, rand_n, suit_n)
+    }
+    
+    count_all <- bind_rows(
+      mpa_count,
+      strict_mpa_count,
+      kba_count,
+      ebsa_count,
+      wild_count
+    ) %>% 
+      mutate(iteration = k)
+    
+    count_results <- bind_rows(count_results, count_all)
+  }
+  
+  write.csv(
+    count_results,
+    here(paste0("output_data/Random_turbines/Random_turbines_count_", iso3, ".csv")),
+    row.names = FALSE
+  )
+  
+  write_csv(
+    failed_iterations,
+    here(paste0("output_data/Random_turbines/Failed_iterations_", iso3, ".csv"))
+  )
+
+
+  list(
+    clustered_outputs = sub_cluster,
+    noise_summary = noise_summary_row,
+    count_results = count_results,
+    failed_iterations = failed_iterations
+  )
+}
+```
+
+
+
+# Run in parallel with progress bar
+
+```{r}
+plan(multisession, workers = 6)
+handlers(global = TRUE)
+```
+
+
+```{r}
+
+start<-Sys.time()
+
+with_progress({
+  
+  p <- progressor(along = country_order)
+  
+  results <- future_map(
+    country_order,
+    ~{
+      res <- run_country(.x)
+      p(sprintf("Finished %s", .x))
+      res
+    },
+    .options = furrr_options(seed = TRUE)
+)
+})
+
+end <- Sys.time()
+end - start
+```
+
+# Combine outputs
+
+```{r}
+clustered_outputs_bind <- purrr::map(results, "clustered_outputs") %>%
+  bind_rows()
+
+noise_summary_bind <- purrr::map(results, "noise_summary") %>%
+  bind_rows()
+```
+
+
