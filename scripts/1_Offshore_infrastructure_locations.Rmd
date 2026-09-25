@@ -76,16 +76,27 @@ wind2 <- wind %>%
   distinct(st_coordinates(.)[, "X"], st_coordinates(.)[, "Y"], .keep_all = TRUE)
 ```
 
+Remove points found in countries without any installed capacity (Canada, Russia, Poland, Chile)
 
 ```{r}
-st_write(wind2, here("output_data/offshore_wind/Wind_point_locations.shp"), append = FALSE)
+to_remove<-read_csv(here("output_data/Paolo_results/Wind_pts_to_remove.csv"))
+```
+```{r}
+wind3<-wind2 %>% 
+  filter(!geometry %in% to_remove$geometry)
+```
+
+
+
+```{r}
+st_write(wind3, here("output_data/offshore_wind/Wind_point_locations.shp"), append = FALSE)
 ```
 # Buffers
 
 25
 
 ```{r}
-wind_buff25<-st_buffer(wind2, dist = 25000) 
+wind_buff25<-st_buffer(wind3, dist = 25000) 
 
 wind_buff25_2<-wind_buff25 %>% 
   mutate(diss = 1) %>%
@@ -100,7 +111,7 @@ st_write(wind_buff25_2, here("output_data/offshore_wind/Wind_buffer_25km.shp"), 
 
 
 ```{r}
-wind_buff15<-st_buffer(wind2, dist = 15000) 
+wind_buff15<-st_buffer(wind3, dist = 15000) 
 
 wind_buff15_2<-wind_buff15 %>% 
   mutate(diss = 1) %>%
@@ -115,7 +126,7 @@ st_write(wind_buff15_2, here("output_data/offshore_wind/Wind_buffer_15km.shp"), 
 
 
 ```{r}
-wind_buff1<-st_buffer(wind2, dist = 1000) 
+wind_buff1<-st_buffer(wind3, dist = 1000) 
 
 wind_buff1_2<-wind_buff1 %>% 
   mutate(diss = 1) %>%

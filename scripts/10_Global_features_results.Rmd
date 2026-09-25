@@ -72,22 +72,6 @@ strict_mpa_diss <-strict_mpa %>%
   mutate(bio_km2 = as.numeric(st_area(.)*1e-6))
 ```
 
-# Non-strict MPA
-
-```{r}
-non_strict_mpa<-st_read(here("raw_data/WDPA/Subset_WDPA_Non_strict_Sept2025.shp")) %>% 
-    st_transform(., crs = "ESRI:54017")
-
-non_strict_mpa<-non_strict_mpa %>% 
-  rename(diss = id)
-
-non_strict_mpa_diss <-non_strict_mpa %>% 
-  group_by(diss) %>% 
-  summarise(.) %>% 
-  mutate(bio_km2 = as.numeric(st_area(.)*1e-6))
-```
-
-
 # Wilderness
 
 ```{r}
@@ -128,8 +112,6 @@ eez_mpa<-st_intersection(eez_diss, mpa)%>%
   mutate(bio_eez_km2 = as.numeric(st_area(.)*1e-6))
 eez_strict_mpa<-st_intersection(eez_diss, strict_mpa_diss)%>% 
   mutate(bio_eez_km2 = as.numeric(st_area(.)*1e-6))
-eez_non_strict_mpa<-st_intersection(eez_diss, non_strict_mpa_diss)%>% 
-  mutate(bio_eez_km2 = as.numeric(st_area(.)*1e-6))
 eez_wild<-st_intersection(eez_diss, wild_diss)%>% 
   mutate(bio_eez_km2 = as.numeric(st_area(.)*1e-6))
 ```
@@ -138,12 +120,9 @@ eez_wild<-st_intersection(eez_diss, wild_diss)%>%
 # Intersect with wind
 
 ```{r}
-buff1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
-  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
-buff15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
-  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
-buff25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
-  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
+buff1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) 
+buff15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) 
+buff25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) 
 ```
 
 ```{r}
@@ -196,6 +175,8 @@ all_mpa<-rbind(mpa_eez_wind1, mpa_eez_wind15, mpa_eez_wind25) %>%
          prop_int_wind = bio_eez_wind_km2/wind_km2,
          type = "MPA")
 ```
+
+
 ```{r}
 strict_mpa_eez_wind1<-st_intersection(eez_strict_mpa, buff1) %>% 
   mutate(bio_eez_wind_km2 = as.numeric(st_area(.)*1e-6),
@@ -213,22 +194,6 @@ strict_all_mpa<-rbind(strict_mpa_eez_wind1, strict_mpa_eez_wind15, strict_mpa_ee
          type = "Strict MPA")
 ```
 
-```{r}
-non_strict_mpa_eez_wind1<-st_intersection(eez_non_strict_mpa, buff1) %>% 
-  mutate(bio_eez_wind_km2 = as.numeric(st_area(.)*1e-6),
-         buff = 1)
-non_strict_mpa_eez_wind15<-st_intersection(eez_non_strict_mpa, buff15) %>% 
-    mutate(bio_eez_wind_km2 = as.numeric(st_area(.)*1e-6),
-         buff = 15)
-non_strict_mpa_eez_wind25<-st_intersection(eez_non_strict_mpa, buff25) %>% 
-    mutate(bio_eez_wind_km2 = as.numeric(st_area(.)*1e-6),
-         buff = 25)
-
-non_strict_all_mpa<-rbind(non_strict_mpa_eez_wind1, non_strict_mpa_eez_wind15, non_strict_mpa_eez_wind25) %>% 
-  mutate(prop_int = bio_eez_wind_km2/bio_eez_km2,
-         prop_int_wind = bio_eez_wind_km2/wind_km2,
-         type = "Non strict MPA")
-```
 
 ```{r}
 wild_eez_wind1<-st_intersection(eez_wild, buff1) %>% 
@@ -248,7 +213,7 @@ all_wild<-rbind(wild_eez_wind1, wild_eez_wind15, wild_eez_wind25) %>%
 ```
 
 ```{r}
-all_results<-rbind(all_ebsa, all_kba, all_mpa, strict_all_mpa, non_strict_all_mpa, all_wild) %>% 
+all_results<-rbind(all_ebsa, all_kba, all_mpa, strict_all_mpa, all_wild) %>% 
   as.data.frame() %>% 
   select(-geometry)
 ```

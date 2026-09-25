@@ -52,18 +52,15 @@ eez_kba<-eez_kba %>%
 ```
 
 ```{r}
-st_write(eez_kba, here("output_data/biodiversity_features/KBA_EEZ_intersect.shp"))
+st_write(eez_kba, here("output_data/biodiversity_features/KBA_EEZ_intersect.shp"), append = F)
 ```
 
 # Infrastructure data
 ```{r}
 wind_points<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
-wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
-  rename(wind_km2 = area_km2)
-wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
-  rename(wind_km2 = area_km2)
-wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
-  rename(wind_km2 = area_km2)
+wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) 
+wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) 
+wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) 
 ```
 
 
@@ -124,7 +121,7 @@ write.csv(all_buff, here("output_data/Paolo_results/KBA_wind_area.csv"))
 ```
 
 ```{r}
-test<-read.csv(here("output_data/results/KBA_wind_area.csv"))
+#test<-read.csv(here("output_data/results/KBA_wind_area.csv"))
 ```
 
 ```{r}

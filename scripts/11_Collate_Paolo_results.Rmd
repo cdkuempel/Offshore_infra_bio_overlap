@@ -26,18 +26,17 @@ total<-read.csv(count_results[[1]]) %>%
   rename(total_wind = num_wind) %>% 
   select(-X)
 
-count_results2<-count_results[2:10]
+count_results2<-count_results[2:7]
 
-count_dfs<-lapply(count_results2, read.csv)
+count_dfs<-lapply(count_results2, read_csv)
 
 combined_count <- do.call(rbind, count_dfs) %>% 
-  rename(overlap_wind = num_wind) %>% 
-  select(-X)
+  rename(overlap_wind = num_wind) 
 
 combined_count2<-full_join(combined_count, total, by = "rgn_key") %>% 
   mutate(overlap_wind = ifelse(is.na(overlap_wind) == T, 0, overlap_wind)) %>% 
-  mutate(prop_count = overlap_wind/total_wind) %>% 
-  mutate(type = ifelse(is.na(type) == T, "Non-strict MPA", type))
+  mutate(prop_count = overlap_wind/total_wind)  %>% 
+  filter(overlap_wind>0)
 
 ```
 
@@ -66,15 +65,13 @@ combined_area<-c()
 # Only do 1:5 as wilderness is messing things up
 for(i in 1:length(area_dfs)){
   df<-area_dfs[[i]]
-  print(i)
- 
-   if(unique(df$type) == "Wilderness"){
-    df<-df %>%
-      mutate(area_km2 = NA)
-      colnames(df)[3] <- "feature_km2"
-   }else{
+    print(i)
+  if(nrow(df) == 0){
+    next
+  } else {
   colnames(df)[4] <- "feature_km2"
    }
+  
   combined_area<-rbind(combined_area, df)
   
 }

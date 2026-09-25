@@ -85,7 +85,7 @@ all_diss<-all_diss %>%
 ```
 
 ```{r}
-st_write(all_diss, here("output_data/Paolo_results/Combined_bio_features.shp"))
+st_write(all_diss, here("output_data/Paolo_results/Combined_bio_features.shp"), append = F)
 ```
 
 
@@ -110,7 +110,7 @@ bio_eez<-st_intersection(all_diss, eez_diss) %>%
 ```
 
 ```{r}
-st_write(bio_eez, here("output_data/Paolo_results/Combined_bio_features_within_eez.shp"))
+st_write(bio_eez, here("output_data/Paolo_results/Combined_bio_features_within_eez.shp"), append = F)
 ```
 
 ```{r}
@@ -122,19 +122,18 @@ all_diss<-st_read(here("output_data/Paolo_results/Combined_bio_features.shp"))
 bio_iso3<-st_intersection(all_diss, eez) %>% 
   mutate(bio_iso3_km2 = as.numeric(st_area(.)*1e-6))
 ```
+
+
 ```{r}
-st_write(bio_iso3, here("output_data/Paolo_results/Combined_bio_features_by_iso3.shp"))
+st_write(bio_iso3, here("output_data/Paolo_results/Combined_bio_features_by_iso3.shp"), append = F)
 ```
 
 # Intersect with wind
 
 ```{r}
-buff1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
-  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
-buff15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
-  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
-buff25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
-  mutate(wind_km2 = as.numeric(st_area(.)*1e-6))
+buff1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) 
+buff15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) 
+buff25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) 
 ```
 
 ```{r}

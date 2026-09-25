@@ -59,7 +59,15 @@ eez_wind25<-st_intersection(eez,buff25) %>%
 ```{r}
 eez_count<-st_intersection(eez, wind_pts)
 
-st_write(eez_count, here("output_data/Paolo_results/Wind_pt_EEZ_intersect.shp"))
+st_write(eez_count, here("output_data/Paolo_results/Wind_pt_EEZ_intersect.shp"), append = F)
+
+#test<-st_read(here("output_data/Paolo_results/Wind_pt_EEZ_intersect.shp")) #%>% 
+ # filter(!rgn_key %in% c("CAN", "RUS", "CHL", "POL"))
+
+#to_remove<-test %>% 
+#  filter(rgn_key %in% c("CAN", "RUS", "CHL", "POL"))
+
+#write.csv(to_remove, here("output_data/Paolo_results/Wind_pts_to_remove.csv"))
 
 eez_count2<-eez_count %>% 
  mutate(count = 1) %>%

@@ -52,19 +52,17 @@ test<-eez_mpa %>%
 ```
 
 ```{r}
-st_write(eez_mpa, here("output_data/biodiversity_features/MPA_EEZ_intersect.shp"))
+st_write(eez_mpa, here("output_data/biodiversity_features/MPA_EEZ_intersect.shp"), append = F)
 
+#test<-st_read(here("output_data/biodiversity_features/MPA_EEZ_intersect.shp"))
 ```
 
 # Infrastructure data
 ```{r}
 wind_points<-st_read(here("output_data/offshore_wind/Wind_point_locations.shp"))
-wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) %>% 
-  rename(wind_km2 = area_km2)
-wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) %>% 
-  rename(wind_km2 = area_km2)
-wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp")) %>% 
-  rename(wind_km2 = area_km2)
+wind25<-st_read(here("output_data/offshore_wind/Wind_buffer_25km.shp")) 
+wind15<-st_read(here("output_data/offshore_wind/Wind_buffer_15km.shp")) 
+wind1<-st_read(here("output_data/offshore_wind/Wind_buffer_1km.shp"))
 ```
 
 
