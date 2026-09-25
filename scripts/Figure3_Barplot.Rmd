@@ -24,7 +24,8 @@ library(countrycode)
 # Data
 
 ```{r}
-iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv"))
+iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv")) %>% 
+  filter(!rgn_key %in% c("CAN", "RUS", "POL", "CHL"))
 global_results<-read_csv(here("output_data/Paolo_results/Collated/Global_all_results.csv"))
 ```
 
@@ -48,30 +49,20 @@ all_siting<-rbind(siting_global_dat, siting_dat) %>%
   mutate(name = ifelse(is.na(name) == T, "World", name),
          buff2 = as.character(buff))
 ```
-```{r}
 
-ggplot(all_siting, aes(fill = buff2, x = name, y = prop_int*100)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~type, scale = "free") +
-  theme_bw() +
-   scale_fill_manual(values = c("25"="darkblue", "15"="lightblue", "1"="royalblue")) +
-  labs(x = "Country",
-       y = "Percent overlap with offshore wind",
-       fill = "Buffer size") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-```
 ```{r}
 
 all_siting2<-all_siting %>% 
   filter(!type == "All",
-         !type %in% c("Natura2000", "Other MPA", "Non-strict MPA")) %>% 
+         !type %in% c("Natura2000", "Other MPA", "Non-strict MPA"),
+         !rgn_key == "World") %>% 
   mutate(label = ifelse(buff2 == "25" & prop_int<=0.01, "*",
                         ifelse(buff2 == "15" & prop_int<=0.01, "*",
                                ifelse(buff2 == "1" & prop_int <=0.01, "*", ""))))
 
 ggplot(all_siting2, aes(fill = buff2, x = type, y = prop_int * 100)) +
   geom_col(position = "dodge") +
-  facet_wrap(~name, scales = "free_x") +
+  facet_wrap(~name, scales = "free_x", nrow = 6) +
   theme_bw() +
   scale_fill_manual(values = c("25"="darkblue", "15"="lightblue", "1"="royalblue")) +
   labs(x = "Key Biodiversity Area",
@@ -94,11 +85,9 @@ ggplot(all_siting2, aes(fill = buff2, x = type, y = prop_int * 100)) +
 ```{r}
 ggsave(here("figures/Fig2_biodiversity_overlap.png"), width = 10, height = 12)
 ```
+
 ```{r}
 write.csv(all_siting2, here("output_data/Supp_table_bio_area_overlap.csv"))
 ```
 
-```{r}
-
-```
 

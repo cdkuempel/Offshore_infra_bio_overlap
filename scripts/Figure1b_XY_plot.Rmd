@@ -19,10 +19,15 @@ library(tmap)
 library(countrycode)
 library(geodata)
 library(tmap)
+library(ggrepel)
+library(tidytext)
+library(scales)
 ```
 
 ```{r}
-iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv"))
+iso3_results<-read_csv(here("output_data/Paolo_results/Collated/Final_country_all_results.csv")) %>% 
+  filter(!rgn_key %in% c("CAN", "RUS", "POL", "CHL"))
+
 global_results<-read_csv(here("output_data/Paolo_results/Collated/Global_all_results.csv"))
 ```
 # Siting decision figure
@@ -77,18 +82,6 @@ wide_supp <- all_siting %>%
 write.csv(wide_supp, here("output_data/Supp_table_siting_overlap.csv"))
 ```
 
-
-```{r}
-ggplot(all_siting, aes(y = prop_wind_int*100, x = name, fill = iso3_wind_km2)) + 
-  geom_bar(stat = "identity") +
-  facet_wrap(~type, scales = "free") +
-  labs(y = "Overlap (%)",
-       x = "Country",
-       fill = expression(Overlap~(km^2))) +
-  #ylim(c(0,100)) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
-```
 ```{r}
 all_siting2<-all_siting %>% 
   filter(!is.na(prop_count),
@@ -119,79 +112,10 @@ all_siting2 <- all_siting2 %>%
 
 ```
 
-```{r}
-ggplot(all_siting2, aes(y = prop_count*100, x = name, fill = overlap_wind_cat)) + 
-  geom_bar(stat = "identity") +
-  facet_wrap(~type, scales = "free") +
-  labs(y = "Percent of turbines",
-       x = "Country",
-       fill = "Number of turbines") +
-  ylim(c(0,100)) +
-  coord_cartesian(clip = "off") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) +
-  scale_fill_viridis_d(
-    option = "C",     # or "D"
-    direction = 1,
-    name = "Number of turbines"
-  ) +
-  geom_text(
-    aes(label = paste0("(", overlap_wind, ")")),
-    position = position_dodge(width = 0.9),
-    vjust = -0.5,
-    size = 3
-  )  +
-  theme(plot.margin = margin(t = 50, unit = "pt"))
-```
-```{r}
-ggsave(here("figures/Number_turbine_overlap_barchart.png"), width = 14, height = 7, dpi = 600)
-```
 
-```{r}
-ggplot(all_siting2, aes(y = prop_count*100, x = name, fill = total_wind)) + 
-  geom_bar(stat = "identity") +
-  facet_wrap(~type, scales = "free") +
-  labs(y = "Overlap (% of turbines)",
-       x = "Country",
-       fill = "Total turbines") +
-  scale_y_continuous(
-    limits = c(0, 100),
-    expand = expansion(mult = c(0, 0.2))
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) +
-  scale_fill_viridis_c(
-    option = "C",     # or "D"
-    direction = 1,
-    name = "Total turbines (#)"
-  ) +
-  geom_text(
-    aes(label = paste0("(", overlap_wind, ")")),
-    position = position_dodge(width = 0.9),
-    vjust = -0.5,
-    size = 3
-  )
-```
 ```{r}
 all_siting3<-all_siting2 %>% 
   filter(!rgn_key == "World")
-
-ggplot(all_siting3, aes(y = overlap_wind, x = name, fill = prop_count*100)) + 
-  geom_bar(stat = "identity") +
-  facet_wrap(~type, scales = "free_x") +
-  labs(y = "Overlap (# of turbines)",
-       x = "Country",
-       fill = "Overlap (% of turbines)") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) +
-  scale_fill_viridis_c(
-    option = "C",     # or "D"
-    direction = 1,
-    name = "Overlap (% of turbines)"
-  ) +
-   scale_y_log10(
-    labels = scales::label_number()
-  )
  
 ```
 
@@ -200,15 +124,15 @@ ggplot(all_siting3, aes(y = overlap_wind, x = name, fill = prop_count*100)) +
 ggplot(all_siting3, aes(
   x = overlap_wind,
   y = prop_count * 100,
-  fill = total_wind
+  fill = total_wind/1000
 )) +
   geom_point(shape = 21, size = 3) +
   geom_text_repel(aes(label = rgn_key), vjust = -0.5, size = 3) +
-  facet_wrap(~type, scales = "free") +
+  facet_wrap(~type, scales = "free_y") +
   labs(
     y = "Percent of turbines overlapping feature",
     x = "Number of turbines overlapping feature",
-    fill = "Total turbines"
+    fill = "Total turbines\n(thousands)"
   ) +
   scale_y_continuous(limits = c(0, 100)) +
   theme_minimal() +
@@ -217,7 +141,7 @@ ggplot(all_siting3, aes(
         strip.text = element_text(size = 12, face = "bold"))
 ```
 ```{r}
-ggsave(here("figures/Number_turbine_overlap_XY_plot.png"), width = 10, height = 7, dpi = 600)
+#ggsave(here("figures/Number_turbine_overlap_XY_plot.png"), width = 10, height = 7, dpi = 600)
 ```
 
 ```{r}
@@ -256,4 +180,27 @@ ggplot(df_grad, aes(x = prop_count*100, y = type)) +
 ggsave(here("figures/Number_turbine_overlap_gradient_plot.png"), width = 10, height = 7, dpi = 600)
 ```
 
+```{r}
+df_bar <- all_siting2 %>%
+  filter(name != "World") %>%
+  mutate(country_ord = reorder_within(name, prop_count, type))
 
+ggplot(df_bar, aes(x = prop_count * 100, y = country_ord, fill = total_wind/1000)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = comma(overlap_wind)), hjust = -0.15, size = 3) +
+  scale_y_reordered() +
+  facet_wrap(~type, scales = "free_y", ncol = 2) +
+  scale_x_continuous(limits = c(0,100)) +
+  scale_fill_distiller(palette = "Blues", direction = 1, name = "Total turbines\n(thousands)") +
+  labs(x = "Turbines overlapping feature (%)", y = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold"),
+    panel.spacing = unit(1.8, "lines")
+  )
+```
+```{r}
+ggsave(here("figures/Turbine_overlap_barchart.png"), width = 10, height = 7, dpi = 600)
+```
