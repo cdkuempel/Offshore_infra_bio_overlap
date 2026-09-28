@@ -151,6 +151,7 @@ rand_count_bind %>%
 
 ```{r}
 write.csv(results_compare, here("output_data/Random_turbines/Random_results_output.csv"))
+test<-read_csv(here("output_data/Random_turbines/Random_results_output.csv"))
 ```
 
 

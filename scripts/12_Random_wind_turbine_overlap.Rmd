@@ -86,6 +86,11 @@ kba<-st_read(here("output_data/biodiversity_features/KBA_EEZ_intersect.shp"))
 ebsa<-st_read(here("output_data/biodiversity_features/EBSA_EEZ_intersect.shp"))
 
 wild<-st_read(here("output_data/biodiversity_features/Wilderness_EEZ_intersect.shp"))
+
+all<-st_read(here("output_data/Paolo_results/Combined_bio_features_by_iso3.shp")) %>% 
+  select(rgn_key, are_km2, b_s3_k2) %>% 
+  rename(area_km2 = are_km2,
+         all_km2 = b_s3_k2)
 ```
 
 
@@ -179,7 +184,7 @@ for(i in 1:length(country_order)){
   # 5. MASK SECOND (Turns all pixels outside the exact country border to NA)
   country_raster_masked <- mask(country_raster_crop, country_vect)
   
-  writeRaster(country_raster_masked, here(paste0("output_data/temp/Suitable_cells_", country_order[[i]], ".tif")))
+  writeRaster(country_raster_masked, here(paste0("output_data/temp/Suitable_cells_", country_order[[i]], ".tif")), overwrite = T)
 
 }
 ```
@@ -292,6 +297,10 @@ turbines_relative <- sub_cluster %>%
     filter(rgn_key == iso3) %>% 
     distinct(geometry, .keep_all = TRUE)
   
+  sub_all<-all %>% 
+    filter(rgn_key == iso3) %>% 
+    distinct(geometry, .keep_all = TRUE)
+  
   # Pre-union biodiversity geometries once per country
   # These are only used if the feature is not empty
 sub_mpa_u <- if (nrow(sub_mpa) > 0) st_sf(geometry = st_union(st_make_valid(sub_mpa))) else sub_mpa
@@ -299,6 +308,7 @@ sub_strict_u <- if (nrow(sub_strict) > 0) st_sf(geometry = st_union(st_make_vali
 sub_kba_u    <- if (nrow(sub_kba) > 0)    st_sf(geometry = st_union(st_make_valid(sub_kba))) else sub_kba
 sub_ebsa_u   <- if (nrow(sub_ebsa) > 0)   st_sf(geometry = st_union(st_make_valid(sub_ebsa))) else sub_ebsa
 sub_wild_u   <- if (nrow(sub_wild) > 0)   st_sf(geometry = st_union(st_make_valid(sub_wild))) else sub_wild
+sub_all_u   <- if (nrow(sub_all) > 0)   st_sf(geometry = st_union(st_make_valid(sub_all))) else sub_all
   
   # Storage objects
   count_results <- data.frame()
@@ -309,7 +319,7 @@ sub_wild_u   <- if (nrow(sub_wild) > 0)   st_sf(geometry = st_union(st_make_vali
   
   cluster_ids <- unique(turbines_relative$cluster_id[turbines_relative$cluster_id > 0])
   
-  for (k in 1:10) {
+  for (k in 1:500) {
     
     random_turbines_list <- list()
     valid_config <- TRUE
@@ -434,12 +444,21 @@ sub_wild_u   <- if (nrow(sub_wild) > 0)   st_sf(geometry = st_union(st_make_vali
       wild_count <- safe_count(sub_wild_u, rand_turbines_suit, "Wilderness", base_n, rand_n, suit_n)
     }
     
+    # All
+    empty_check <- safe_empty_feature(sub_all, iso3, "All")
+    if (!is.null(empty_check)) {
+      all_count <- empty_check$count %>% mutate(num_rand_wind_overlap = NA, baseline_wind_count = base_n, rand_turbines = rand_n, suitable_turbines = suit_n)
+    } else {
+      all_count <- safe_count(sub_all_u, rand_turbines_suit, "All", base_n, rand_n, suit_n)
+    }
+    
     count_all <- bind_rows(
       mpa_count,
       strict_mpa_count,
       kba_count,
       ebsa_count,
-      wild_count
+      wild_count,
+      all_count
     ) %>% 
       mutate(iteration = k)
     
