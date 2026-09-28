@@ -1,0 +1,126 @@
+---
+title: "Untitled"
+author: "Caitie"
+date: "2026-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(here)
+library(tidyverse)
+library(ggplot2)
+library(ggrepel)
+library(scales)
+```
+
+```{r}
+dat<-read_csv(here("raw_data/Wind_PA_national_comparison.csv")) %>% 
+  select(country, windcapacity_2024_gw, target_capacity_gw, target_deadline, percent_eez_protected) %>% 
+  mutate(percent_eez_protected = ifelse(country == "Italy", 0.0756*100, #taken from MPA analysis, just wasn't in spreadsheet
+                                        ifelse(country == "India", 0.33, as.numeric(percent_eez_protected)))) %>%  #spatial data not in WDPA but taken from protectedplanet.com as a percent
+  filter(!country == "Chinese Taipei") %>% 
+  mutate(energy_gap = target_capacity_gw-windcapacity_2024_gw,
+         protection_gap = 30-percent_eez_protected,
+        Urgency = ifelse(target_deadline - 2025 <=5, "5 or less",
+                          ifelse(target_deadline-2025 >5 & target_deadline-2025 <=10, "5-10",
+                                 ">10"))) %>% 
+  mutate(Urgency = factor(Urgency, levels = c("5 or less", "5-10", ">10")),
+         Urgency = ifelse(is.na(Urgency) == T, "Unreported", as.character(Urgency))) %>% 
+  mutate(
+    Urgency = factor(
+      Urgency,
+      levels = c("5 or less", "5-10", ">10", "Unreported")
+    )
+  ) 
+  
+```
+
+```{r}
+# Randomization outcomes from Table S2 (1 km direct overlap)
+siting <- tibble::tribble(
+  ~country,      ~siting,
+  "Germany",     "Lower than random",
+  "Netherlands", "Lower than random",
+  "United Kingdom",          "Higher than random",
+  "Denmark",     "Higher than random",
+  "Viet Nam",    "Higher than random",
+  "Belgium",     "Not different from random",
+  "China",       "Not different from random",
+  "Sweden",      "Not different from random",
+  "Taiwan",      "Not different from random",
+  "Finland",     "Not tested (<50 turbines)",
+  "France",      "Not tested (<50 turbines)",
+  "Ireland",     "Not tested (<50 turbines)",
+  "Norway",      "Not tested (<50 turbines)",
+  "South Korea", "Not tested (<50 turbines)",
+  "United States",          "Not tested (<50 turbines)"
+)
+
+siting_levels <- c("Lower than random", "Not different from random",
+                   "Higher than random", "Not tested (<50 turbines)",
+                   "No current turbines / not analysed")
+
+dat2 <- dat %>%
+  left_join(siting, by = "country") %>%
+  mutate(siting = coalesce(siting, "No current turbines / not analysed"),
+         siting = factor(siting, levels = siting_levels))
+
+
+```
+
+```{r}
+# Check every analysed country matched (should return 15)
+sum(dat2$siting != "No current turbines / not analysed")
+
+siting_cols <- c(
+  "Lower than random"                  = "#1b9e77",
+  "Not different from random"          = "grey30",
+  "Higher than random"                 = "#d95f02",
+  "Not tested (<50 turbines)"          = "grey30",
+  "No current turbines / not analysed" = "grey70"
+)
+siting_shapes <- c(
+  "Lower than random"                  = 16,
+  "Not different from random"          = 16,
+  "Higher than random"                 = 16,
+  "Not tested (<50 turbines)"          = 1,   # open circle
+  "No current turbines / not analysed" = 16
+)
+
+
+```
+
+```{r}
+ggplot(dat2, aes(x = protection_gap, y = energy_gap)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+  geom_hline(yintercept = median(dat2$energy_gap, na.rm = TRUE),
+             linetype = "dashed", colour = "grey40") +
+  geom_point(aes(colour = siting, shape = siting), size = 2.5, stroke = 0.9) +
+  geom_text_repel(aes(label = country, colour = siting),
+                size = 3, seed = 1, max.overlaps = Inf,
+                min.segment.length = Inf,
+                bg.color = "white", bg.r = 0.1,
+                show.legend = FALSE) +
+scale_y_log10(breaks = c(1, 2, 5, 10, 20, 50, 100),
+              labels = label_comma()) +
+scale_colour_manual(values = siting_cols, drop = FALSE) +
+  scale_shape_manual(values = siting_shapes, drop = FALSE) +
+  labs(y = "Offshore wind gap (GW)",
+       x = "Marine protection gap (%)",
+       colour = "Siting relative to\nrandom expectation",
+       shape  = "Siting relative to\nrandom expectation") +
+  theme_bw() +
+  theme(axis.title   = element_text(size = 12),
+        legend.title = element_text(size = 10),
+        legend.text  = element_text(size = 9))
+```
+
+```{r}
+ggsave(here("figures/Fig4_Energy_MPA_gap_XY_plot.png"), width = , height = 5)
+```
+
+
