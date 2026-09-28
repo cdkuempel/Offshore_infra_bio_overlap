@@ -52,34 +52,29 @@ all_siting<-rbind(siting_global_dat, siting_dat) %>%
 
 ```{r}
 
-all_siting2<-all_siting %>% 
+all_siting2 <- all_siting %>%
   filter(!type == "All",
          !type %in% c("Natura2000", "Other MPA", "Non-strict MPA"),
-         !rgn_key == "World") %>% 
-  mutate(label = ifelse(buff2 == "25" & prop_int<=0.01, "*",
-                        ifelse(buff2 == "15" & prop_int<=0.01, "*",
-                               ifelse(buff2 == "1" & prop_int <=0.01, "*", ""))))
+         !rgn_key == "World") %>%
+  mutate(label = ifelse(!is.na(prop_int) & prop_int < 0.01, "*", ""))
 
-ggplot(all_siting2, aes(fill = buff2, x = type, y = prop_int * 100)) +
-  geom_col(position = "dodge") +
+dodge <- position_dodge(width = 0.9)
+
+ggplot(all_siting2, aes(fill = buff2, x = type, y = prop_int * 100, group = buff2)) +
+  geom_col(position = dodge, width = 0.9) +
+  geom_text(aes(label = label), position = dodge, vjust = 0, size = 6) +
   facet_wrap(~name, scales = "free_x", nrow = 6) +
-  theme_bw() +
-  scale_fill_manual(values = c("25"="darkblue", "15"="lightblue", "1"="royalblue")) +
+  scale_fill_manual(values = c("25" = "darkblue", "15" = "lightblue", "1" = "royalblue")) +
   labs(x = "Key Biodiversity Area",
        y = "Percent offshore wind overlap with feature",
        fill = "Buffer size") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
-  geom_text(
-    aes(label = label),
-    vjust = -0.5, # Adjust vertical position slightly above the bar
-    size = 5     # Adjust the size of the asterisk
-  ) +
-   theme(axis.text.x = element_text(angle = 90, hjust = 1),
+  ylim(c(0, 100)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
         axis.title.x = element_text(size = 12),
         axis.title.y = element_text(size = 12),
         strip.text = element_text(size = 10),
-       legend.position = "bottom") +
-  ylim(c(0,100))
+        legend.position = "bottom")
 ```
 
 ```{r}
@@ -90,4 +85,38 @@ ggsave(here("figures/Fig2_biodiversity_overlap.png"), width = 10, height = 12)
 write.csv(all_siting2, here("output_data/Supp_table_bio_area_overlap.csv"))
 ```
 
+```{r}
+all_siting2 <- all_siting %>%
+  filter(!type == "All",
+         !type %in% c("Natura2000", "Other MPA", "Non-strict MPA"),
+         !rgn_key == "World") %>%
+  # zero-overlap combinations probably have no row at all; make them explicit
+  complete(nesting(name, rgn_key), type, buff2, fill = list(prop_int = 0))
 
+# one star per country x feature, only when <1% at ALL buffer sizes (zeros included)
+star_df <- all_siting2 %>%
+  group_by(name, type) %>%
+  summarise(all_lt1 = all(prop_int < 0.01), .groups = "drop") %>%
+  filter(all_lt1)
+
+ggplot(all_siting2, aes(fill = buff2, x = type, y = prop_int * 100)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(data = star_df, aes(x = type, y = 0, label = "*"),
+            inherit.aes = FALSE, vjust = -0.3, size = 6) +
+  facet_wrap(~name, scales = "free_x", nrow = 6) +
+  scale_fill_manual(values = c("25" = "darkblue", "15" = "lightblue", "1" = "royalblue")) +
+  labs(x = "Key Biodiversity Area",
+       y = "Percent offshore wind overlap with feature",
+       fill = "Buffer size") +
+  ylim(c(0, 100)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        strip.text = element_text(size = 10),
+        legend.position = "bottom")
+```
+
+```{r}
+ggsave(here("figures/Fig2_biodiversity_overlap2.png"), width = 10, height = 12)
+```
